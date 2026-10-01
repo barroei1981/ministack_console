@@ -1,0 +1,8 @@
+generated: 2026-10-01 18:45
+project: ministack_console
+tracking_system: file-system
+story_location: docs/implementation-artifacts
+
+# Status values: backlog | ready-for-dev | in-progress | review | done | blocked
+# Epic keys are `epic-N`; retrospectives are `epic-N-retrospective: optional`.
+development_status: {}
