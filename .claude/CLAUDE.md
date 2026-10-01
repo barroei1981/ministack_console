@@ -1,24 +1,44 @@
 # ministack_console
 
 ## Project Overview
-Admin console for MiniStack - a free, open-source AWS emulator (https://github.com/ministackorg/ministack).
+**Control-plane** for MiniStack - a free, open-source AWS emulator (https://github.com/ministackorg/ministack).
 
 **What MiniStack is:**
 - Emulates 60+ AWS services on localhost:4566
 - Alternative to LocalStack (which went paid)
 - Drop-in compatible with boto3, AWS CLI, Terraform, CDK, Pulumi
+- Supports multi-tenancy: 12-digit access key = separate account
 - MIT licensed, free forever
 
 **The Gap We're Filling:**
-MiniStack has NO web UI or admin console. Users must use CLI/SDK for everything.
+1. MiniStack has NO web UI or admin console (users must use CLI/SDK)
+2. No resource-to-project-to-tenant tracking
+3. AI assistants have NO visibility into local dev environment state
 
-**What We're Building:**
-Web-based admin panel providing AWS Console experience for local development:
+**What We're Building: Dual-Interface Control-Plane**
+
+**Human Interface (Web UI):**
+- **Full CRUD operations** for all 60+ MiniStack services (Query, Create, Read, Update, Delete)
+- Complete service management equivalent to AWS Console capabilities
 - Visual management of S3 buckets, SQS queues, Lambda functions, DynamoDB tables, etc.
 - Service dashboards showing resource state
 - Log inspection (CloudWatch Logs, SES emails, SNS messages)
-- Resource creation/deletion without CLI commands
+- Configuration and policy management (IAM, security groups, etc.)
 - Real-time monitoring of emulated services
+- Project and tenant management
+
+**Scope:** Every operation available via AWS CLI/SDK should be available via the UI - this is NOT a read-only dashboard.
+
+**AI Assistant Interface (MCP Server):**
+- Expose MiniStack state via Model Context Protocol
+- Enable AI assistants (Claude, etc.) to query environment state
+- Resource queries: "What S3 buckets exist in tenant-1?"
+- Relationship queries: "Which projects use this SQS queue?"
+- Context-aware development: AI knows what resources actually exist
+- Single interaction point for AI-assisted development
+
+**Key Innovation:**
+Control-plane maintains resource graph showing tenant → project → resource relationships, making both human AND AI workflows environment-aware.
 
 ## Stack
 [To be determined during architecture phase - likely:
