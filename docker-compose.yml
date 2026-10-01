@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  # FalkorDB Graph Database
+  falkordb:
+    image: falkordb/falkordb:latest
+    container_name: ministack-falkordb
+    ports:
+      - "6379:6379"
+    volumes:
+      - falkordb-data:/data
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  falkordb-data:
+    name: ministack-falkordb-data
