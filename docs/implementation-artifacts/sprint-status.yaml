@@ -6,4 +6,5 @@ story_location: docs/implementation-artifacts
 # Status values: backlog | ready-for-dev | in-progress | review | done | blocked
 # Epic keys are `epic-N`; retrospectives are `epic-N-retrospective: optional`.
 development_status:
-  MSCL-1: review
+  MSCL-1: done
+  MSCL-2: review
