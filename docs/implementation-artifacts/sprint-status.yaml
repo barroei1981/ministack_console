@@ -7,4 +7,5 @@ story_location: docs/implementation-artifacts
 # Epic keys are `epic-N`; retrospectives are `epic-N-retrospective: optional`.
 development_status:
   MSCL-1: done
-  MSCL-2: review
+  MSCL-2: done
+  MSCL-3: in-progress

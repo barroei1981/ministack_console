@@ -9,6 +9,7 @@ import json
 from typing import List
 
 from control_plane.graph.query import create_node, delete_node, query_nodes, get_graph
+from control_plane.tenants.isolation import ensure_tenant_exists
 from .models import Change, ChangeType
 
 logger = logging.getLogger(__name__)
@@ -61,12 +62,17 @@ async def _sync_created(change: Change) -> None:
     """
     Sync CREATED change: create new Resource node.
 
+    Per MSCL-3: Ensure Tenant node exists before creating Resource.
+
     Args:
         change: CREATED change with resource
     """
     resource = change.resource
     if not resource:
         raise ValueError("CREATED change missing resource")
+
+    # Ensure tenant exists (idempotent) per MSCL-3
+    await ensure_tenant_exists(resource.tenant_id)
 
     # Convert state dict to JSON string for FalkorDB storage
     properties = resource.to_dict()
