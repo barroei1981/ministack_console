@@ -3,15 +3,16 @@
 **Phase:** in-development
 
 ## Current State
-MSCL-1 (FalkorDB Setup) complete and in review. PR #1 created.
-Next: MSCL-2 (Resource Polling from MiniStack API)
+MSCL-3 (Multi-Tenant Isolation) complete and in review. PR #3 created.
+Next: MSCL-4 (Control-Plane Tagging) after PR #3 approval
 
 ## Context for Next Session
 - Project: ministack_console
 - Stack: Python 3.11+, FastAPI (planned), FalkorDB, Docker Compose
-- Phase: Epic 1 (Control-Plane Foundation) - story 1/7 complete
-- Branch: story/MSCL-1-falkordb-setup → awaiting PR approval
-- PR: https://github.com/barroei1981/ministack_console/pull/1
+- Phase: Epic 1 (Control-Plane Foundation) - stories 1-3/7 complete
+- Branch: story/MSCL-3-multi-tenant → awaiting PR approval
+- PR: https://github.com/barroei1981/ministack_console/pull/3
+- Completed: MSCL-1 (FalkorDB Setup - PR #1 merged), MSCL-2 (MiniStack Polling - PR #2 merged), MSCL-3 (Multi-Tenant Isolation - PR #3 in review)
 
 ## What This Project Is
 Control-plane for ministack (https://github.com/ministackorg/ministack) - a free, open-source AWS emulator.
