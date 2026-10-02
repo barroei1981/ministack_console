@@ -332,6 +332,189 @@ def query_nodes(
         raise
 
 
+def query_relationships(
+    from_node_id: str,
+    from_label: str,
+    rel_type: str,
+    include_deleted: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Query relationships from a node.
+
+    By default, only returns active relationships (deleted_at IS NULL).
+    Use include_deleted=True to get historical relationships.
+
+    Args:
+        from_node_id: Source node ID
+        from_label: Source node label
+        rel_type: Relationship type
+        include_deleted: Include soft-deleted relationships (default: False)
+
+    Returns:
+        List of relationship dicts with target node info:
+        [
+            {
+                "from_node_id": "...",
+                "to_node_id": "...",
+                "rel_type": "...",
+                "properties": {...}
+            }
+        ]
+
+    Raises:
+        Exception: If query fails
+    """
+    if not all([from_node_id, from_label, rel_type]):
+        raise ValueError("All parameters are required")
+
+    try:
+        graph = get_graph()
+
+        # Filter out soft-deleted relationships by default
+        where_clause = "" if include_deleted else "WHERE r.deleted_at IS NULL"
+
+        query = f"""
+        MATCH (a:{from_label} {{id: $from_id}})-[r:{rel_type}]->(b)
+        {where_clause}
+        RETURN a.id AS from_id, type(r) AS rel_type, properties(r) AS props, b.id AS to_id
+        """
+
+        result = graph.query(query, params={"from_id": from_node_id})
+
+        relationships = []
+        for record in result.result_set:
+            relationships.append({
+                "from_node_id": record[0],
+                "rel_type": record[1],
+                "properties": dict(record[2]) if record[2] else {},
+                "to_node_id": record[3],
+            })
+
+        logger.debug(f"Found {len(relationships)} {rel_type} relationships for {from_node_id}")
+        return relationships
+
+    except Exception as e:
+        logger.error(f"Failed to query relationships: {e}")
+        raise
+
+
+def soft_delete_relationship(
+    from_node_id: str,
+    from_label: str,
+    rel_type: str,
+    to_node_id: str,
+    to_label: str,
+) -> bool:
+    """
+    Soft-delete a relationship by setting deleted_at timestamp.
+
+    Preserves relationship for historical queries while filtering it out
+    from active relationship queries.
+
+    Args:
+        from_node_id: Source node ID
+        from_label: Source node label
+        rel_type: Relationship type
+        to_node_id: Target node ID
+        to_label: Target node label
+
+    Returns:
+        bool: True if soft-deleted, False if not found
+
+    Raises:
+        Exception: If soft-deletion fails
+    """
+    if not all([from_node_id, from_label, rel_type, to_node_id, to_label]):
+        raise ValueError("All parameters are required")
+
+    try:
+        from datetime import datetime, UTC
+        graph = get_graph()
+
+        deleted_at = datetime.now(UTC).isoformat()
+
+        query = f"""
+        MATCH (a:{from_label} {{id: $from_id}})-[r:{rel_type}]->(b:{to_label} {{id: $to_id}})
+        SET r.deleted_at = $deleted_at
+        RETURN count(r) AS updated_count
+        """
+
+        result = graph.query(
+            query,
+            params={"from_id": from_node_id, "to_id": to_node_id, "deleted_at": deleted_at}
+        )
+
+        updated = result.result_set[0][0] > 0 if result.result_set else False
+
+        if updated:
+            logger.info(f"Soft-deleted relationship: ({from_label})-[{rel_type}]->({to_label})")
+        else:
+            logger.debug(f"Relationship not found for soft-deletion")
+
+        return updated
+
+    except Exception as e:
+        logger.error(f"Failed to soft-delete relationship: {e}")
+        raise
+
+
+def delete_relationship(
+    from_node_id: str,
+    from_label: str,
+    rel_type: str,
+    to_node_id: str,
+    to_label: str,
+) -> bool:
+    """
+    Delete a relationship between two nodes (hard delete).
+
+    Note: For dependency relationships, prefer soft_delete_relationship()
+    to preserve history for audit trail.
+
+    Args:
+        from_node_id: Source node ID
+        from_label: Source node label
+        rel_type: Relationship type
+        to_node_id: Target node ID
+        to_label: Target node label
+
+    Returns:
+        bool: True if deleted, False if not found
+
+    Raises:
+        Exception: If deletion fails
+    """
+    if not all([from_node_id, from_label, rel_type, to_node_id, to_label]):
+        raise ValueError("All parameters are required")
+
+    try:
+        graph = get_graph()
+
+        query = f"""
+        MATCH (a:{from_label} {{id: $from_id}})-[r:{rel_type}]->(b:{to_label} {{id: $to_id}})
+        DELETE r
+        RETURN count(r) AS deleted_count
+        """
+
+        result = graph.query(
+            query,
+            params={"from_id": from_node_id, "to_id": to_node_id}
+        )
+
+        deleted = result.result_set[0][0] > 0 if result.result_set else False
+
+        if deleted:
+            logger.info(f"Deleted relationship: ({from_label})-[{rel_type}]->({to_label})")
+        else:
+            logger.debug(f"Relationship not found for deletion")
+
+        return deleted
+
+    except Exception as e:
+        logger.error(f"Failed to delete relationship: {e}")
+        raise
+
+
 def delete_node(label: str, node_id: str) -> bool:
     """
     Delete a node by ID.

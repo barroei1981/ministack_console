@@ -357,3 +357,93 @@ class MiniStackClient:
                 return resources
 
         return await self._retry_with_backoff(_list_tables, "DynamoDB")
+
+    async def list_event_source_mappings(
+        self, function_name: str
+    ) -> List[Dict[str, Any]]:
+        """
+        List event source mappings for a Lambda function.
+
+        Args:
+            function_name: Lambda function name
+
+        Returns:
+            List of event source mappings:
+            [
+                {
+                    "UUID": "mapping-uuid",
+                    "EventSourceArn": "arn:aws:sqs:...",
+                    "State": "Enabled",
+                    "FunctionArn": "arn:aws:lambda:...",
+                }
+            ]
+
+        Raises:
+            Exception: If API call fails after retries
+        """
+
+        async def _list_mappings():
+            session = self._get_session()
+            async with session.client(
+                "lambda", endpoint_url=self.endpoint_url
+            ) as lambda_client:
+                response = await lambda_client.list_event_source_mappings(
+                    FunctionName=function_name
+                )
+                return response.get("EventSourceMappings", [])
+
+        return await self._retry_with_backoff(_list_mappings, "Lambda")
+
+    async def get_bucket_policy(self, bucket_name: str) -> Optional[str]:
+        """
+        Get S3 bucket policy as JSON string.
+
+        Args:
+            bucket_name: S3 bucket name
+
+        Returns:
+            Policy JSON string or None if no policy exists
+
+        Raises:
+            Exception: If API call fails after retries (except NoSuchBucketPolicy)
+        """
+
+        async def _get_policy():
+            session = self._get_session()
+            async with session.client(
+                "s3", endpoint_url=self.endpoint_url
+            ) as s3_client:
+                try:
+                    response = await s3_client.get_bucket_policy(Bucket=bucket_name)
+                    return response.get("Policy")
+                except Exception as e:
+                    # NoSuchBucketPolicy is expected for buckets without policies
+                    if "NoSuchBucketPolicy" in str(e):
+                        return None
+                    raise
+
+        return await self._retry_with_backoff(_get_policy, "S3")
+
+    async def get_lambda_function_config(self, function_name: str) -> Dict[str, Any]:
+        """
+        Get full Lambda function configuration including environment variables.
+
+        Args:
+            function_name: Lambda function name
+
+        Returns:
+            Function configuration dict with Environment.Variables
+
+        Raises:
+            Exception: If API call fails after retries
+        """
+
+        async def _get_function():
+            session = self._get_session()
+            async with session.client(
+                "lambda", endpoint_url=self.endpoint_url
+            ) as lambda_client:
+                response = await lambda_client.get_function(FunctionName=function_name)
+                return response.get("Configuration", {})
+
+        return await self._retry_with_backoff(_get_function, "Lambda")
