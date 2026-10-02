@@ -101,6 +101,45 @@ class TracingContext:
         return False
 
 
+def log_operational(
+    message: str,
+    **context: Any,
+) -> None:
+    """
+    Log an operational event with structured format.
+
+    Used for normal operations, request/response flow, performance metrics.
+
+    Args:
+        message: Human-readable message
+        **context: Additional context fields (duration_ms, status_code, etc.)
+
+    Example:
+        log_operational(
+            "API request completed",
+            method="GET",
+            path="/api/tenants",
+            status_code=200,
+            duration_ms=45
+        )
+    """
+    operational_entry = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "level": "INFO",
+        "type": "OPERATIONAL",
+        "message": message,
+    }
+
+    # Add context fields
+    operational_entry.update(context)
+
+    # Log as structured JSON-like entry
+    logger.info(
+        f"[OPERATIONAL] {message}",
+        extra=operational_entry,
+    )
+
+
 def trace_operation(span_name: str, **attributes):
     """
     Decorator/context manager for tracing operations.

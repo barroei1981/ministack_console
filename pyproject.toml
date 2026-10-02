@@ -9,6 +9,8 @@ dependencies = [
     "falkordb>=1.7.0",
     "aioboto3>=12.0.0",
     "aiohttp>=3.9.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
 ]
 
 [project.optional-dependencies]
@@ -18,11 +20,12 @@ dev = [
     "black>=23.11.0",
     "mypy>=1.7.1",
     "ruff>=0.1.6",
+    "httpx2>=0.28.0",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["control_plane*"]
+include = ["control_plane*", "api*"]
 exclude = ["tests*"]
 
 [build-system]
