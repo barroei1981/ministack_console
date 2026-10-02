@@ -7,6 +7,7 @@ Orchestrates dependency detection and syncs relationships to graph database.
 import logging
 from typing import Any
 
+from ..events import event_bus
 from ..graph.query import (
     create_relationship,
     query_nodes,
@@ -216,6 +217,21 @@ async def _sync_resource_dependencies(
                         changes={"before": {}, "after": dep.to_properties()},
                     )
 
+                    # Emit DEPENDENCY_ADDED event (MSCL-7)
+                    try:
+                        await event_bus.publish(
+                            event_type="DEPENDENCY_ADDED",
+                            resource={
+                                "source_id": dep.source_id,
+                                "target_id": dep.target_id,
+                                "type": dep.type.value,
+                                "metadata": dep.metadata,
+                            },
+                            tenant_id=tenant_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"[OPERATIONAL] Failed to emit DEPENDENCY_ADDED event: {e}")
+
                     logger.debug(f"[OPERATIONAL] Created dependency: {resource_arn} → {dep.target_id}")
                 except Exception as e:
                     logger.error(f"[OPERATIONAL] Failed to create dependency: {e}")
@@ -244,6 +260,21 @@ async def _sync_resource_dependencies(
                         status="SUCCESS",
                         changes={"before": dep.to_properties(), "after": {"deleted_at": "set"}},
                     )
+
+                    # Emit DEPENDENCY_REMOVED event (MSCL-7)
+                    try:
+                        await event_bus.publish(
+                            event_type="DEPENDENCY_REMOVED",
+                            resource={
+                                "source_id": dep.source_id,
+                                "target_id": dep.target_id,
+                                "type": dep.type.value,
+                                "metadata": dep.metadata,
+                            },
+                            tenant_id=tenant_id,
+                        )
+                    except Exception as e:
+                        logger.error(f"[OPERATIONAL] Failed to emit DEPENDENCY_REMOVED event: {e}")
 
                     logger.debug(f"[OPERATIONAL] Soft-deleted stale dependency: {resource_arn} → {dep.target_id}")
                 except Exception as e:
