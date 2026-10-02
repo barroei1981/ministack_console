@@ -557,6 +557,72 @@ def delete_node(label: str, node_id: str) -> bool:
         raise
 
 
+def query_reverse_relationships(
+    to_node_id: str,
+    to_label: str,
+    rel_type: str,
+    include_deleted: bool = False,
+) -> List[Dict[str, Any]]:
+    """
+    Query reverse relationships to a node (find who depends on this node).
+
+    By default, only returns active relationships (deleted_at IS NULL).
+    Use include_deleted=True to get historical relationships.
+
+    Args:
+        to_node_id: Target node ID
+        to_label: Target node label
+        rel_type: Relationship type
+        include_deleted: Include soft-deleted relationships (default: False)
+
+    Returns:
+        List of relationship dicts with source node info:
+        [
+            {
+                "from_node_id": "...",
+                "to_node_id": "...",
+                "rel_type": "...",
+                "properties": {...}
+            }
+        ]
+
+    Raises:
+        Exception: If query fails
+    """
+    if not all([to_node_id, to_label, rel_type]):
+        raise ValueError("All parameters are required")
+
+    try:
+        graph = get_graph()
+
+        # Filter out soft-deleted relationships by default
+        where_clause = "" if include_deleted else "WHERE r.deleted_at IS NULL"
+
+        query = f"""
+        MATCH (a)-[r:{rel_type}]->(b:{to_label} {{id: $to_id}})
+        {where_clause}
+        RETURN a.id AS from_id, type(r) AS rel_type, properties(r) AS props, b.id AS to_id
+        """
+
+        result = graph.query(query, params={"to_id": to_node_id})
+
+        relationships = []
+        for record in result.result_set:
+            relationships.append({
+                "from_node_id": record[0],
+                "rel_type": record[1],
+                "properties": dict(record[2]) if record[2] else {},
+                "to_node_id": record[3],
+            })
+
+        logger.debug(f"Found {len(relationships)} reverse {rel_type} relationships for {to_node_id}")
+        return relationships
+
+    except Exception as e:
+        logger.error(f"Failed to query reverse relationships: {e}")
+        raise
+
+
 def reset_graph() -> None:
     """
     Delete all nodes and relationships in the graph.
