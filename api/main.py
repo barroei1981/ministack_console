@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.tenant_context import TenantContextMiddleware
-from api.routes import graph, health, projects, tenants
+from api.routes import graph, health, projects, sse, tenants
 from control_plane.observability import log_operational
 
 # Configuration
@@ -106,6 +106,7 @@ app.include_router(health.router, prefix="/api", tags=["health"])
 app.include_router(tenants.router, prefix="/api", tags=["tenants"])
 app.include_router(projects.router, prefix="/api", tags=["projects"])
 app.include_router(graph.router, prefix="/api", tags=["graph"])
+app.include_router(sse.router, prefix="/api", tags=["sse"])
 
 
 # Root endpoint

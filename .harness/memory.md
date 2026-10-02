@@ -3,20 +3,23 @@
 **Phase:** in-development
 
 ## Current State
-MSCL-4 (Dual Tagging System) complete and in review. PR #4 created.
-Next: MSCL-5 (Dependency Detection) after PR #4 approval
+MSCL-7 (Server-Sent Events System) complete and in review. PR #7 created.
+Epic 1 (Control-Plane Foundation) - all 7 stories complete.
 
 ## Context for Next Session
 - Project: ministack_console
-- Stack: Python 3.11+, FastAPI (planned), FalkorDB, Docker Compose
-- Phase: Epic 1 (Control-Plane Foundation) - stories 1-4/7 complete
-- Branch: story/MSCL-4-dual-tagging → awaiting PR approval
-- PR: https://github.com/barroei1981/ministack_console/pull/4
+- Stack: Python 3.11+, FastAPI, FalkorDB, Docker Compose, SSE
+- Phase: Epic 1 (Control-Plane Foundation) - all 7 stories complete
+- Branch: story/MSCL-7-sse-events → awaiting PR approval
+- PR: https://github.com/barroei1981/ministack_console/pull/7
 - Completed: 
   - MSCL-1 (FalkorDB Setup - PR #1 merged)
   - MSCL-2 (MiniStack Polling - PR #2 merged)
   - MSCL-3 (Multi-Tenant Isolation - PR #3 merged)
-  - MSCL-4 (Dual Tagging System - PR #4 in review)
+  - MSCL-4 (Dual Tagging System - PR #4 merged)
+  - MSCL-5 (Dependency Detection - PR #5 merged)
+  - MSCL-6 (FastAPI REST API Foundation - PR #6 in review)
+  - MSCL-7 (Server-Sent Events System - PR #7 in review)
 
 ## What This Project Is
 Control-plane for ministack (https://github.com/ministackorg/ministack) - a free, open-source AWS emulator.

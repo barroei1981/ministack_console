@@ -5,8 +5,8 @@ Provides AUDIT logging helpers per observability.md requirements.
 """
 
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime, UTC
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 def log_audit(
     message: str,
     event_type: str,
-    actor: Dict[str, Any],
-    target: Dict[str, Any],
+    actor: dict[str, Any],
+    target: dict[str, Any],
     action: str,
     status: str,
-    changes: Optional[Dict[str, Any]] = None,
+    changes: dict[str, Any] | None = None,
     **kwargs,
 ) -> None:
     """
@@ -137,6 +137,44 @@ def log_operational(
     logger.info(
         f"[OPERATIONAL] {message}",
         extra=operational_entry,
+    )
+
+
+def log_security(
+    message: str,
+    **context: Any,
+) -> None:
+    """
+    Log a security event with structured format.
+
+    Used for authentication, authorization, data access patterns, security policy violations.
+    Per observability.md: SSE connections are data access patterns and require SECURITY logs.
+
+    Args:
+        message: Human-readable message
+        **context: Additional context fields (user_id, tenant_id, ip_address, etc.)
+
+    Example:
+        log_security(
+            "SSE connection established",
+            tenant_id="123456789012",
+            ip_address="192.168.1.100"
+        )
+    """
+    security_entry = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "level": "INFO",
+        "type": "SECURITY",
+        "message": message,
+    }
+
+    # Add context fields
+    security_entry.update(context)
+
+    # Log as structured JSON-like entry
+    logger.info(
+        f"[SECURITY] {message}",
+        extra=security_entry,
     )
 
 
