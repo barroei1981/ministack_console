@@ -171,6 +171,21 @@ class ResourcePoller:
 
             return
 
+        # Step 4.5: Sync dependencies
+        try:
+            from ..dependencies.manager import sync_all_dependencies
+
+            # Convert Resource objects to dicts for dependency detection
+            resources_dicts = [r.to_dict() for r in resources]
+            dep_stats = await sync_all_dependencies(resources_dicts, self.client)
+            logger.debug(
+                f"Dependency sync: {dep_stats['dependencies_created']} created, "
+                f"{dep_stats['dependencies_deleted']} deleted"
+            )
+        except Exception as e:
+            # Don't fail the entire poll cycle if dependency sync fails
+            logger.error(f"Dependency sync failed: {e}", exc_info=True)
+
         # Step 5: Update last snapshot
         self.last_snapshot = Snapshot(resources=resources)
 
