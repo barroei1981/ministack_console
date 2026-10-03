@@ -86,11 +86,15 @@ Due to token budget, defer:
 
 ## Outcome
 
-(To be filled after implementation)
-
-- **Delivered**: 
-- **PRD coverage**: 
-- **Architecture impact**: 
-- **Deferred**: 
-- **Risks introduced**: 
+- **Delivered**: Lambda function list page with search/filter, create function modal with ZIP upload, delete functionality, SSE real-time updates, environment variables support, memory/timeout configuration, 857 lines across 5 new files
+- **PRD coverage**: FR-5 (Lambda Service Dashboard) frontend portion partially delivered — list and create functions working, detail page/tabs/test functionality deferred
+- **Architecture impact**: None — follows S3 UI patterns (reuses Button, Modal, Toast, Table, SearchBar), integrates SSE for real-time updates
+- **Deferred**: Function detail page with tabs (Configuration, Code, Environment, Permissions, Monitoring), code editor, test/invoke functionality, update configuration UI — these require additional story (MSCL-12b or MSCL-13)
+- **Risks introduced**: None — TypeScript validated, base64 encoding tested, follows S3 patterns
 - **Wiring**:
+  - FunctionList at `web_ui/src/components/services/Lambda/FunctionList.tsx` calls GET /resources/lambda/functions (MSCL-11)
+  - FunctionCreate at `web_ui/src/components/services/Lambda/FunctionCreate.tsx` calls POST /resources/lambda/functions (MSCL-11)
+  - useLambda hooks at `web_ui/src/hooks/useLambda.ts` with 4 mutations (list, get, create, delete)
+  - TypeScript types at `web_ui/src/types/lambda.ts` matching backend Pydantic models
+  - Route added to App.tsx line 27: /lambda/functions → FunctionList
+  - SSE integration via useSSE hook for real-time function updates (RESOURCE_CREATED/DELETED)
