@@ -124,11 +124,16 @@ Epic 2: S3 Service Management (story 3 of 3)
 
 ## Outcome
 
-(To be filled after implementation)
-
-- **Delivered**: 
-- **PRD coverage**: 
-- **Architecture impact**: 
-- **Deferred**: 
-- **Risks introduced**: 
+- **Delivered**: Bucket detail page with breadcrumbs (S3 > Buckets > {name}), three tabs (Overview, Properties, Tags), versioning toggle with optimistic updates, delete modal with force delete option, SSE real-time updates with auto-reconnect (exponential backoff 3s-48s, max 5 attempts), clickable bucket names in list, routing for `/s3/buckets/:name`
+- **PRD coverage**: FR-5 (S3 Service Dashboard) frontend portion fully delivered — bucket detail, properties management, tag display, delete operations, real-time updates
+- **Architecture impact**: None — follows control-plane architecture (AD-4 SSE for real-time updates), reuses MSCL-9a common components, integrates with MSCL-8 backend API endpoints
+- **Deferred**: Native tags editing (read-only placeholder implemented), object count in delete modal may show 0 if backend doesn't populate state.object_count (force delete still works)
+- **Risks introduced**: None — SSE reconnection tested, optimistic updates revert correctly on error, all TypeScript types enforced
 - **Wiring**:
+  - `useSSE` hook wired in BucketList at line 26 and BucketDetail at line 32 — cache invalidation on RESOURCE_CREATED/UPDATED/DELETED events
+  - `BucketDetail` route wired in App.tsx at line 24 — `/s3/buckets/:name` navigates to detail component
+  - `useBucket` hook called in BucketDetail at line 29 — fetches bucket detail from GET /api/resources/s3/buckets/{name}
+  - `useUpdateVersioning` hook called in BucketDetail at line 113 — optimistic toggle PUT /api/resources/s3/buckets/{name}/versioning
+  - `useDeleteBucket` hook called in BucketDelete at line 35 — DELETE with ?force=true support
+  - Breadcrumbs component reused in BucketDetail at line 195 — navigation S3 > Buckets > {name}
+  - Tabs component reused in BucketDetail at line 202 — URL sync via ?tab query param
