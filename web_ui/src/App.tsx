@@ -1,0 +1,31 @@
+import { Suspense } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Toast } from './components/common/Toast';
+import { BucketList } from './components/services/S3/BucketList';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30000,
+      retry: 3,
+    },
+  },
+});
+
+function App() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/s3/buckets" element={<BucketList />} />
+          </Routes>
+        </BrowserRouter>
+        <Toast />
+      </QueryClientProvider>
+    </Suspense>
+  );
+}
+
+export default App;

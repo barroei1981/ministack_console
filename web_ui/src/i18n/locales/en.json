@@ -1,0 +1,46 @@
+{
+  "s3": {
+    "title": "S3",
+    "createBucket": "Create bucket",
+    "table": {
+      "name": "Name",
+      "region": "Region",
+      "versioning": "Versioning",
+      "tags": "Tags",
+      "created": "Created"
+    },
+    "empty": "No buckets found",
+    "errors": {
+      "missingTenantId": "Missing tenant_id query parameter. Please add ?tenant_id=YOUR_TENANT_ID to the URL."
+    },
+    "create": {
+      "title": "Create bucket",
+      "name": "Bucket name",
+      "namePlaceholder": "my-bucket-name",
+      "project": "Project (optional)",
+      "projectPlaceholder": "my-project",
+      "versioning": "Enable versioning",
+      "submit": "Create",
+      "cancel": "Cancel",
+      "errors": {
+        "nameMin": "Minimum 3 characters",
+        "nameMax": "Maximum 63 characters",
+        "namePattern": "Lowercase alphanumeric with hyphens/periods",
+        "consecutivePeriods": "No consecutive periods"
+      }
+    },
+    "success": {
+      "created": "Bucket created successfully"
+    },
+    "apiErrors": {
+      "loadFailed": "Failed to load buckets",
+      "createFailed": "Failed to create bucket",
+      "accessDenied": "Access denied",
+      "networkError": "Network error, check connection"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "search": "Search..."
+  }
+}

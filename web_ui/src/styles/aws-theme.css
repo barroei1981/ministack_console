@@ -1,0 +1,20 @@
+:root {
+  --aws-blue: #232f3e;
+  --aws-orange: #ff9900;
+  --aws-gray-light: #f2f3f3;
+  --aws-gray-dark: #545b64;
+  --aws-border: #d5dbdb;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
