@@ -9,17 +9,26 @@ from api.models import (
     BucketResponse,
     CreateBucketRequest,
     CreateFunctionRequest,
+    CreateTableRequest,
     DeleteBucketResponse,
     DeleteFunctionResponse,
+    DeleteTableResponse,
     ErrorResponse,
     FunctionListResponse,
     FunctionResponse,
     InvokeFunctionRequest,
     InvokeFunctionResponse,
+    PutItemRequest,
+    PutItemResponse,
+    ScanItemsRequest,
+    ScanItemsResponse,
+    TableListResponse,
+    TableResponse,
     UpdateFunctionCodeRequest,
     UpdateFunctionConfigurationRequest,
     UpdateVersioningRequest,
 )
+from api.services.dynamodb import DynamoDBService
 from api.services.lambda_ import LambdaService
 from api.services.s3 import S3Service
 from control_plane.observability import log_operational
@@ -1168,4 +1177,280 @@ async def invoke_lambda_function(
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to invoke Lambda function: {e!s}"
+        )
+
+
+# =============================================================================
+# DynamoDB Endpoints
+# =============================================================================
+
+
+@router.get(
+    "/resources/dynamodb/tables",
+    response_model=TableListResponse,
+    summary="List DynamoDB tables",
+    description="List all DynamoDB tables for a tenant",
+)
+async def list_dynamodb_tables(
+    request: Request,
+    tenant_id: str = Query(..., description="Tenant ID (12 digits)"),
+) -> TableListResponse:
+    """
+    List all DynamoDB tables for a tenant.
+
+    Args:
+        request: FastAPI request
+        tenant_id: Tenant ID from query param
+
+    Returns:
+        TableListResponse with table list and metadata
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 500 if operation fails
+    """
+    try:
+        if tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        dynamodb_service = DynamoDBService(tenant_id)
+        tables = await dynamodb_service.list_tables()
+
+        log_operational(
+            "Listed DynamoDB tables via API",
+            tenant_id=tenant_id,
+            count=len(tables),
+        )
+
+        return TableListResponse(
+            tables=[
+                TableResponse(
+                    name=t["name"],
+                    tenant_id=t["tenant_id"],
+                    project=t.get("project"),
+                    arn=t["arn"],
+                    created_at=t["created_at"],
+                    key_schema=t["state"]["key_schema"],
+                    attribute_definitions=t["state"]["attribute_definitions"],
+                    billing_mode=t["state"]["billing_mode"],
+                    table_status=t["state"]["table_status"],
+                    item_count=t["state"]["item_count"],
+                    tags=t.get("tags", {}),
+                    state=t["state"],
+                )
+                for t in tables
+            ],
+            tenant_id=tenant_id,
+            total=len(tables),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to list DynamoDB tables via API",
+            tenant_id=tenant_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list DynamoDB tables: {e!s}"
+        )
+
+
+@router.post(
+    "/resources/dynamodb/tables",
+    response_model=TableResponse,
+    status_code=201,
+    summary="Create DynamoDB table",
+    description="Create a new DynamoDB table",
+)
+async def create_dynamodb_table(
+    request: Request, table_request: CreateTableRequest
+) -> TableResponse:
+    """
+    Create a new DynamoDB table.
+
+    Args:
+        request: FastAPI request
+        table_request: Table configuration
+
+    Returns:
+        TableResponse with created table metadata
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 400 if validation fails, 500 if creation fails
+    """
+    try:
+        if table_request.tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        dynamodb_service = DynamoDBService(table_request.tenant_id)
+        table = await dynamodb_service.create_table(
+            name=table_request.name,
+            key_schema=table_request.key_schema,
+            attribute_definitions=table_request.attribute_definitions,
+            billing_mode=table_request.billing_mode,
+            provisioned_throughput=table_request.provisioned_throughput,
+            project=table_request.project,
+            tags=table_request.tags,
+        )
+
+        log_operational(
+            "Created DynamoDB table via API",
+            tenant_id=table_request.tenant_id,
+            table_name=table_request.name,
+        )
+
+        return TableResponse(
+            name=table["name"],
+            tenant_id=table["tenant_id"],
+            project=table.get("project"),
+            arn=table["arn"],
+            created_at=table["created_at"],
+            key_schema=table["state"]["key_schema"],
+            attribute_definitions=table["state"]["attribute_definitions"],
+            billing_mode=table["state"]["billing_mode"],
+            table_status=table["state"]["table_status"],
+            item_count=table["state"]["item_count"],
+            tags=table.get("tags", {}),
+            state=table["state"],
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to create DynamoDB table via API",
+            tenant_id=table_request.tenant_id,
+            table_name=table_request.name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create DynamoDB table: {e!s}"
+        )
+
+
+@router.get(
+    "/resources/dynamodb/tables/{table_name}/items",
+    response_model=ScanItemsResponse,
+    summary="Scan DynamoDB table items",
+    description="Scan items from a DynamoDB table with optional filters",
+)
+async def scan_dynamodb_items(
+    request: Request,
+    table_name: str,
+    tenant_id: str = Query(..., description="Tenant ID (12 digits)"),
+    limit: int = Query(100, description="Max items to return", ge=1, le=1000),
+) -> ScanItemsResponse:
+    """
+    Scan items from a DynamoDB table.
+
+    Args:
+        request: FastAPI request
+        table_name: Table name
+        tenant_id: Tenant ID
+        limit: Max items to return
+
+    Returns:
+        ScanItemsResponse with items and pagination metadata
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 404 if table not found, 500 if scan fails
+    """
+    try:
+        if tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        dynamodb_service = DynamoDBService(tenant_id)
+        result = await dynamodb_service.scan_items(table_name, limit=limit)
+
+        log_operational(
+            "Scanned DynamoDB table items via API",
+            tenant_id=tenant_id,
+            table_name=table_name,
+            count=result["count"],
+        )
+
+        return ScanItemsResponse(
+            items=result["items"],
+            count=result["count"],
+            last_evaluated_key=result["last_evaluated_key"],
+        )
+
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to scan DynamoDB table items via API",
+            tenant_id=tenant_id,
+            table_name=table_name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to scan DynamoDB table items: {e!s}"
+        )
+
+
+@router.put(
+    "/resources/dynamodb/tables/{table_name}/items",
+    response_model=PutItemResponse,
+    summary="Put item to DynamoDB table",
+    description="Create or update an item in a DynamoDB table",
+)
+async def put_dynamodb_item(
+    request: Request, table_name: str, put_request: PutItemRequest
+) -> PutItemResponse:
+    """
+    Put an item to a DynamoDB table.
+
+    Args:
+        request: FastAPI request
+        table_name: Table name
+        put_request: Item data
+
+    Returns:
+        PutItemResponse with success status
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 404 if table not found, 500 if put fails
+    """
+    try:
+        if put_request.tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        dynamodb_service = DynamoDBService(put_request.tenant_id)
+        await dynamodb_service.put_item(table_name, put_request.item)
+
+        log_operational(
+            "Put item to DynamoDB table via API",
+            tenant_id=put_request.tenant_id,
+            table_name=table_name,
+        )
+
+        return PutItemResponse(success=True)
+
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to put item to DynamoDB table via API",
+            tenant_id=put_request.tenant_id,
+            table_name=table_name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to put item to DynamoDB table: {e!s}"
         )

@@ -371,3 +371,141 @@ class InvokeFunctionResponse(BaseModel):
     logs: str = Field(..., description="Execution logs")
     function_error: str | None = Field(None, description="Error type if failed")
     executed_version: str = Field(..., description="Executed function version")
+
+
+# DynamoDB Table naming validation
+DYNAMODB_TABLE_PATTERN = re.compile(r"^[a-zA-Z0-9_.-]+$")
+
+
+def validate_dynamodb_table_name(name: str) -> None:
+    """
+    Validate DynamoDB table name according to AWS rules.
+
+    Args:
+        name: Table name to validate
+
+    Raises:
+        ValueError: If table name violates DynamoDB naming rules
+    """
+    if not (3 <= len(name) <= 255):
+        raise ValueError("Table name must be 3-255 characters")
+
+    if not DYNAMODB_TABLE_PATTERN.match(name):
+        raise ValueError(
+            "Table name must contain only alphanumeric, underscores, hyphens, and periods"
+        )
+
+
+class CreateTableRequest(BaseModel):
+    """Request model for creating a DynamoDB table."""
+
+    name: str = Field(..., description="Table name (3-255 chars)")
+    key_schema: list[dict[str, str]] = Field(
+        ..., description="Key schema (HASH and optionally RANGE keys)"
+    )
+    attribute_definitions: list[dict[str, str]] = Field(
+        ..., description="Attribute definitions for key attributes"
+    )
+    billing_mode: str = Field(
+        "PAY_PER_REQUEST", description="Billing mode (PAY_PER_REQUEST or PROVISIONED)"
+    )
+    provisioned_throughput: dict[str, int] | None = Field(
+        None, description="Provisioned throughput (if PROVISIONED billing mode)"
+    )
+    tenant_id: str = Field(
+        ..., description="Tenant ID (12-digit MiniStack access key)"
+    )
+    project: str | None = Field(None, description="Control-plane project tag")
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Control-plane tags"
+    )
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate table name."""
+        validate_dynamodb_table_name(v)
+        return v
+
+    @field_validator("tenant_id")
+    @classmethod
+    def validate_tenant_id(cls, v: str) -> str:
+        """Validate tenant ID format."""
+        if not re.match(r"^\d{12}$", v):
+            raise ValueError("Tenant ID must be exactly 12 digits")
+        return v
+
+
+class TableResponse(BaseModel):
+    """Response model for DynamoDB table details."""
+
+    name: str = Field(..., description="Table name")
+    tenant_id: str = Field(..., description="Owning tenant ID")
+    project: str | None = Field(None, description="Control-plane project tag")
+    arn: str = Field(..., description="Table ARN")
+    created_at: str = Field(..., description="Creation timestamp (ISO 8601)")
+    key_schema: list[dict[str, str]] = Field(..., description="Key schema")
+    attribute_definitions: list[dict[str, str]] = Field(
+        ..., description="Attribute definitions"
+    )
+    billing_mode: str = Field(..., description="Billing mode")
+    table_status: str = Field(..., description="Table status (ACTIVE, CREATING, etc.)")
+    item_count: int = Field(0, description="Approximate item count")
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Control-plane tags"
+    )
+    state: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Table state (key_schema, billing_mode, item_count)",
+    )
+
+
+class TableListResponse(BaseModel):
+    """Response model for listing DynamoDB tables."""
+
+    tables: list[TableResponse] = Field(..., description="List of tables for tenant")
+    tenant_id: str = Field(..., description="Tenant ID context")
+    total: int = Field(..., description="Total table count")
+
+
+class ScanItemsRequest(BaseModel):
+    """Request model for scanning table items."""
+
+    tenant_id: str = Field(..., description="Tenant ID (for validation)")
+    limit: int = Field(100, description="Max items to return", ge=1, le=1000)
+    exclusive_start_key: dict[str, Any] | None = Field(
+        None, description="Pagination token"
+    )
+    filter_expression: str | None = Field(None, description="Filter expression")
+    projection_expression: str | None = Field(
+        None, description="Projection expression"
+    )
+
+
+class ScanItemsResponse(BaseModel):
+    """Response model for scanned items."""
+
+    items: list[dict[str, Any]] = Field(..., description="Scanned items")
+    count: int = Field(..., description="Number of items returned")
+    last_evaluated_key: dict[str, Any] | None = Field(
+        None, description="Pagination token for next page"
+    )
+
+
+class PutItemRequest(BaseModel):
+    """Request model for putting an item."""
+
+    tenant_id: str = Field(..., description="Tenant ID (for validation)")
+    item: dict[str, Any] = Field(..., description="Item data (DynamoDB JSON format)")
+
+
+class PutItemResponse(BaseModel):
+    """Response model for put item operation."""
+
+    success: bool = Field(..., description="Whether operation succeeded")
+
+
+class DeleteTableResponse(BaseModel):
+    """Response model for deleting a table."""
+
+    deleted: str = Field(..., description="Name of deleted table")
