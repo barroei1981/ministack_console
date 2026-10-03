@@ -43,7 +43,8 @@
       "tabs": {
         "overview": "Overview",
         "properties": "Properties",
-        "tags": "Tags"
+        "tags": "Tags",
+        "objects": "Objects"
       },
       "versioningTitle": "Bucket Versioning",
       "versioningDescription": "Keep multiple versions of an object in the same bucket",

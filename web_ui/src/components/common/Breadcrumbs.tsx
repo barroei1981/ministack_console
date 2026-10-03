@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 export interface BreadcrumbItem {
   label: string;
   href?: string;
+  onClick?: () => void;
 }
 
 export interface BreadcrumbsProps {
@@ -24,6 +25,13 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
             >
               {item.label}
             </Link>
+          ) : item.onClick ? (
+            <button
+              onClick={item.onClick}
+              className="text-aws-blue hover:text-aws-orange transition-colors cursor-pointer"
+            >
+              {item.label}
+            </button>
           ) : (
             <span className="text-gray-600">{item.label}</span>
           )}
