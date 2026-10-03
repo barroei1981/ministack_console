@@ -34,16 +34,25 @@ LocalStack's web UI costs **$49-429/month**. MiniStack is free but has no UI. Th
 
 ## Screenshots
 
-> **📸 TODO:** Add screenshots here after running the console
-> 
-> To take screenshots:
-> 1. Run `docker-compose up -d`
-> 2. Open http://localhost:3000
-> 3. Take 5 screenshots of different services
-> 4. Save to `/screenshots/` directory
-> 5. Update this README
+### Dashboard
+![Dashboard](./screenshots/01-home-dashboard.png)
+*Service categories and navigation*
 
-*Coming soon: Dashboard, S3 Management, DynamoDB Viewer, Lambda Functions*
+### S3 Management
+![S3 Buckets](./screenshots/02-s3-buckets.png)
+*S3 bucket management interface*
+
+### DynamoDB Viewer
+![DynamoDB Tables](./screenshots/03-dynamodb-tables.png)
+*DynamoDB table viewer with optimized performance*
+
+### Lambda Functions
+![Lambda](./screenshots/04-lambda-functions.png)
+*Lambda function management*
+
+### Resource Detail View
+![Detail View](./screenshots/05-resource-detail.png)
+*Detailed resource management interface*
 
 ## Features
 
