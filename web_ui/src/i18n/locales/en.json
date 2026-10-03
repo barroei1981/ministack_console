@@ -29,6 +29,41 @@
         "consecutivePeriods": "No consecutive periods"
       }
     },
+    "detail": {
+      "buckets": "Buckets",
+      "notFound": "Bucket not found",
+      "backToList": "Back to bucket list",
+      "actions": "Actions",
+      "deleteBucket": "Delete bucket",
+      "arn": "ARN",
+      "region": "Region",
+      "versioning": "Versioning",
+      "created": "Created",
+      "project": "Project",
+      "tabs": {
+        "overview": "Overview",
+        "properties": "Properties",
+        "tags": "Tags"
+      },
+      "versioningTitle": "Bucket Versioning",
+      "versioningDescription": "Keep multiple versions of an object in the same bucket",
+      "currentStatus": "Current status",
+      "controlPlaneTags": "Control-Plane Tags",
+      "nativeTags": "Native AWS Tags",
+      "noTags": "No tags",
+      "nativeTagsPlaceholder": "Native tags are managed through AWS SDK/CLI"
+    },
+    "delete": {
+      "title": "Delete bucket",
+      "confirmMessage": "Delete {{bucketName}}? ({{objectCount}} objects)",
+      "hasObjectsWarning": "This bucket contains {{objectCount}} object(s). You must delete all objects before deleting the bucket, or use force delete.",
+      "forceDelete": "Force delete (delete all objects and bucket)",
+      "forceDeleteButton": "Force Delete",
+      "deleteButton": "Delete",
+      "cancel": "Cancel",
+      "deleting": "Deleting bucket...",
+      "deletingWithObjects": "Deleting bucket and {{objectCount}} objects..."
+    },
     "success": {
       "created": "Bucket created successfully"
     },
