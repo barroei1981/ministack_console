@@ -590,11 +590,16 @@ Add "Objects" tab to existing three tabs:
 
 ## Outcome
 
-(To be filled after implementation)
-
-- **Delivered**: 
-- **PRD coverage**: 
-- **Architecture impact**: 
-- **Deferred**: 
-- **Risks introduced**: 
+- **Delivered**: S3 Object Browser with folder navigation (breadcrumbs + prefix filtering), file upload with progress tracking, presigned URL downloads (1hr expiry), bulk delete with confirmation modal, real-time SSE updates, selection checkboxes, emoji icons for folders/files
+- **PRD coverage**: FR-5 (S3 Service Dashboard) object browser fully delivered — upload, download, delete, folder navigation, pagination-ready API (max 1000 objects), real-time updates
+- **Architecture impact**: None — follows control-plane architecture (dual-write pattern for SSE events), reuses MSCL-9 components (Breadcrumbs, Button, Table, Modal), integrates SSE for real-time cache invalidation
+- **Deferred**: Context menu (right-click for Copy S3 URI/ARN), object metadata editor, folder creation UI (backend supports it via key with trailing slash), pagination UI (backend ready with max_keys param)
+- **Risks introduced**: None — presigned URLs expire after 1hr (security), structured logging/audit trails for all operations, TypeScript types enforced, SSE cache invalidation prevents stale data
 - **Wiring**:
+  - `list_objects` API at `/resources/s3/buckets/{name}/objects` called by ObjectBrowser at line 49 (useS3Objects hook)
+  - `upload_object` API at POST `/resources/s3/buckets/{name}/objects` called by ObjectBrowser at line 113 (useUploadObject mutation)
+  - `download_object` API at GET `/resources/s3/buckets/{name}/objects/{key}/download` called by ObjectBrowser at line 153 (useDownloadObject mutation)
+  - `delete_objects` API at DELETE `/resources/s3/buckets/{name}/objects` called by ObjectBrowser at line 158 (useDeleteObjects mutation)
+  - ObjectBrowser integrated into BucketDetail at line 199 as "Objects" tab
+  - Breadcrumbs onClick support added at line 19 for folder navigation without route changes
+  - SSE events for s3:object type trigger cache invalidation in useS3Objects hooks (useSSE.ts line 64)
