@@ -515,3 +515,271 @@ class S3Service:
                     error=str(e),
                 )
                 raise
+
+    async def list_objects(
+        self, bucket_name: str, prefix: str = "", max_keys: int = 1000
+    ) -> dict[str, Any]:
+        """
+        List objects in bucket with optional prefix filter.
+
+        Args:
+            bucket_name: Bucket name
+            prefix: Prefix filter (for folder navigation)
+            max_keys: Maximum objects to return (pagination)
+
+        Returns:
+            Dict with objects list, common_prefixes (folders), is_truncated, next_token
+        """
+        with trace_operation(
+            "list_s3_objects",
+            tenant_id=self.tenant_id,
+            bucket=bucket_name,
+            prefix=prefix,
+        ):
+            try:
+                response = await asyncio.to_thread(
+                    self.client.list_objects_v2,
+                    Bucket=bucket_name,
+                    Prefix=prefix,
+                    MaxKeys=max_keys,
+                    Delimiter="/",  # Group by folders
+                )
+
+                # Parse objects
+                objects = []
+                for obj in response.get("Contents", []):
+                    objects.append(
+                        {
+                            "key": obj["Key"],
+                            "size": obj["Size"],
+                            "last_modified": obj["LastModified"].isoformat(),
+                            "storage_class": obj.get("StorageClass", "STANDARD"),
+                            "etag": obj.get("ETag", "").strip('"'),
+                        }
+                    )
+
+                # Parse common prefixes (folders)
+                folders = []
+                for prefix_obj in response.get("CommonPrefixes", []):
+                    folders.append({"key": prefix_obj["Prefix"]})
+
+                result = {
+                    "objects": objects,
+                    "folders": folders,
+                    "is_truncated": response.get("IsTruncated", False),
+                    "next_token": response.get("NextContinuationToken"),
+                    "prefix": prefix,
+                }
+
+                log_operational(
+                    "Listed S3 objects",
+                    tenant_id=self.tenant_id,
+                    bucket=bucket_name,
+                    prefix=prefix,
+                    object_count=len(objects),
+                    folder_count=len(folders),
+                )
+
+                return result
+
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                if error_code == "NoSuchBucket":
+                    raise ValueError(f"Bucket {bucket_name} not found") from e
+                raise
+
+    async def upload_object(
+        self,
+        bucket_name: str,
+        key: str,
+        file_content: bytes,
+        metadata: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Upload object to S3 bucket.
+
+        Args:
+            bucket_name: Bucket name
+            key: Object key (path)
+            file_content: File content as bytes
+            metadata: Optional object metadata
+
+        Returns:
+            Dict with upload result: {bucket, key, size, etag}
+        """
+        with trace_operation(
+            "upload_s3_object",
+            tenant_id=self.tenant_id,
+            bucket=bucket_name,
+            key=key,
+        ):
+            try:
+                extra_args = {}
+                if metadata:
+                    extra_args["Metadata"] = metadata
+
+                response = await asyncio.to_thread(
+                    self.client.put_object,
+                    Bucket=bucket_name,
+                    Key=key,
+                    Body=file_content,
+                    **extra_args,
+                )
+
+                result = {
+                    "bucket": bucket_name,
+                    "key": key,
+                    "size": len(file_content),
+                    "etag": response.get("ETag", "").strip('"'),
+                }
+
+                log_operational(
+                    "Uploaded S3 object",
+                    tenant_id=self.tenant_id,
+                    bucket=bucket_name,
+                    key=key,
+                    size=len(file_content),
+                )
+
+                # Emit SSE event for object creation
+                await event_bus.publish(
+                    "RESOURCE_CREATED",
+                    {
+                        "type": "s3:object",
+                        "bucket": bucket_name,
+                        "key": key,
+                        "size": len(file_content),
+                    },
+                    self.tenant_id,
+                )
+
+                log_audit(
+                    "S3 object uploaded",
+                    event_type="OBJECT_UPLOADED",
+                    actor={"id": self.tenant_id, "type": "TENANT"},
+                    target={"type": "s3:object", "id": f"{bucket_name}/{key}"},
+                    action="CREATE",
+                    status="SUCCESS",
+                    changes={"before": None, "after": result},
+                )
+
+                return result
+
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                if error_code == "NoSuchBucket":
+                    raise ValueError(f"Bucket {bucket_name} not found") from e
+                raise
+
+    async def download_object(self, bucket_name: str, key: str) -> str:
+        """
+        Generate presigned URL for object download.
+
+        Args:
+            bucket_name: Bucket name
+            key: Object key
+
+        Returns:
+            Presigned URL (expires in 1 hour)
+        """
+        with trace_operation(
+            "download_s3_object",
+            tenant_id=self.tenant_id,
+            bucket=bucket_name,
+            key=key,
+        ):
+            try:
+                url = await asyncio.to_thread(
+                    self.client.generate_presigned_url,
+                    "get_object",
+                    Params={"Bucket": bucket_name, "Key": key},
+                    ExpiresIn=3600,  # 1 hour
+                )
+
+                log_operational(
+                    "Generated presigned URL for S3 object",
+                    tenant_id=self.tenant_id,
+                    bucket=bucket_name,
+                    key=key,
+                )
+
+                return url
+
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                if error_code == "NoSuchBucket":
+                    raise ValueError(f"Bucket {bucket_name} not found") from e
+                elif error_code == "NoSuchKey":
+                    raise ValueError(f"Object {key} not found") from e
+                raise
+
+    async def delete_objects(
+        self, bucket_name: str, keys: list[str]
+    ) -> dict[str, Any]:
+        """
+        Delete multiple objects from bucket.
+
+        Args:
+            bucket_name: Bucket name
+            keys: List of object keys to delete
+
+        Returns:
+            Dict with deletion result: {deleted_count, errors}
+        """
+        with trace_operation(
+            "delete_s3_objects",
+            tenant_id=self.tenant_id,
+            bucket=bucket_name,
+            key_count=len(keys),
+        ):
+            try:
+                objects_to_delete = [{"Key": key} for key in keys]
+
+                response = await asyncio.to_thread(
+                    self.client.delete_objects,
+                    Bucket=bucket_name,
+                    Delete={"Objects": objects_to_delete},
+                )
+
+                deleted = response.get("Deleted", [])
+                errors = response.get("Errors", [])
+
+                result = {"deleted_count": len(deleted), "errors": errors}
+
+                log_operational(
+                    "Deleted S3 objects",
+                    tenant_id=self.tenant_id,
+                    bucket=bucket_name,
+                    deleted_count=len(deleted),
+                    error_count=len(errors),
+                )
+
+                # Emit SSE events for each deleted object
+                for obj in deleted:
+                    await event_bus.publish(
+                        "RESOURCE_DELETED",
+                        {
+                            "type": "s3:object",
+                            "bucket": bucket_name,
+                            "key": obj["Key"],
+                        },
+                        self.tenant_id,
+                    )
+
+                log_audit(
+                    "S3 objects deleted",
+                    event_type="OBJECTS_DELETED",
+                    actor={"id": self.tenant_id, "type": "TENANT"},
+                    target={"type": "s3:object", "id": f"{bucket_name}/*"},
+                    action="DELETE",
+                    status="SUCCESS",
+                    changes={"before": keys, "after": None},
+                )
+
+                return result
+
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                if error_code == "NoSuchBucket":
+                    raise ValueError(f"Bucket {bucket_name} not found") from e
+                raise

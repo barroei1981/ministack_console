@@ -7,6 +7,7 @@ import { Breadcrumbs } from '../../common/Breadcrumbs';
 import { Tabs } from '../../common/Tabs';
 import { Button } from '../../common/Button';
 import { BucketDelete } from './BucketDelete';
+import ObjectBrowser from './ObjectBrowser';
 
 export function BucketDetail() {
   const { t } = useTranslation();
@@ -194,6 +195,13 @@ export function BucketDetail() {
             <p className="text-sm text-gray-500">{t('s3.detail.nativeTagsPlaceholder')}</p>
           </div>
         </div>
+      ),
+    },
+    {
+      id: 'objects',
+      label: t('s3.detail.tabs.objects'),
+      content: (
+        <ObjectBrowser bucketName={bucket.name} tenantId={tenantId || ''} />
       ),
     },
   ];
