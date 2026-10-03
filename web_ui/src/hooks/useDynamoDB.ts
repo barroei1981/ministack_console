@@ -157,3 +157,43 @@ export function usePutItem() {
     },
   });
 }
+
+export function useDeleteItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      tableName,
+      tenantId,
+      key,
+    }: {
+      tableName: string;
+      tenantId: string;
+      key: Record<string, any>;
+    }) => {
+      const response = await fetch(
+        `${API_BASE}/resources/dynamodb/tables/${tableName}/items`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Tenant-ID': tenantId,
+          },
+          body: JSON.stringify({ tenant_id: tenantId, key }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to delete item');
+      }
+
+      return response.json();
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['dynamodb', 'items', variables.tableName, variables.tenantId],
+      });
+    },
+  });
+}

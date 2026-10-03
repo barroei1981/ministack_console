@@ -516,3 +516,67 @@ class DynamoDBService:
                     error=str(e),
                 )
                 raise
+
+    async def delete_item(
+        self, table_name: str, key: dict[str, Any]
+    ) -> dict[str, Any]:
+        """
+        Delete item from DynamoDB table.
+
+        Args:
+            table_name: Table name
+            key: Primary key of item to delete
+
+        Returns:
+            Response metadata
+
+        Raises:
+            ClientError: If MiniStack operation fails
+        """
+        with trace_operation(
+            "delete_dynamodb_item",
+            tenant_id=self.tenant_id,
+            table_name=table_name,
+        ):
+            try:
+                response = await asyncio.to_thread(
+                    self.client.delete_item, TableName=table_name, Key=key
+                )
+
+                log_audit(
+                    event_type="ITEM_DELETED",
+                    actor={"id": self.tenant_id, "type": "TENANT"},
+                    target={"type": "DYNAMODB_ITEM", "id": f"{table_name}/{key}"},
+                    action="DELETE",
+                    status="SUCCESS",
+                    changes={"before": key},
+                )
+
+                # Emit SSE event for table update
+                try:
+                    arn = f"arn:aws:dynamodb:us-east-1:{self.tenant_id}:table/{table_name}"
+                    event_bus.publish(
+                        {
+                            "type": "RESOURCE_UPDATED",
+                            "resource_type": "dynamodb:table",
+                            "resource_id": arn,
+                            "tenant_id": self.tenant_id,
+                        }
+                    )
+                except Exception as e:
+                    log_operational(
+                        "Failed to emit RESOURCE_UPDATED event (non-blocking)",
+                        resource_id=arn,
+                        error=str(e),
+                    )
+
+                return response
+
+            except ClientError as e:
+                log_operational(
+                    "Failed to delete item from DynamoDB table",
+                    tenant_id=self.tenant_id,
+                    table_name=table_name,
+                    error=str(e),
+                )
+                raise

@@ -509,3 +509,16 @@ class DeleteTableResponse(BaseModel):
     """Response model for deleting a table."""
 
     deleted: str = Field(..., description="Name of deleted table")
+
+
+class DeleteItemRequest(BaseModel):
+    """Request model for deleting an item."""
+
+    tenant_id: str = Field(..., description="Tenant ID (for validation)")
+    key: dict[str, Any] = Field(..., description="Primary key of item to delete")
+
+
+class DeleteItemResponse(BaseModel):
+    """Response model for delete item operation."""
+
+    success: bool = Field(..., description="Whether operation succeeded")
