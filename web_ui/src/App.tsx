@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toast } from './components/common/Toast';
 import { BucketList } from './components/services/S3/BucketList';
 import { BucketDetail } from './components/services/S3/BucketDetail';
+import { FunctionList } from './components/services/Lambda/FunctionList';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +23,7 @@ function App() {
           <Routes>
             <Route path="/s3/buckets" element={<BucketList />} />
             <Route path="/s3/buckets/:name" element={<BucketDetail />} />
+            <Route path="/lambda/functions" element={<FunctionList />} />
           </Routes>
         </BrowserRouter>
         <Toast />
