@@ -2,9 +2,10 @@
 Pydantic models for REST API request/response validation.
 """
 
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class HealthServiceStatus(BaseModel):
@@ -104,3 +105,125 @@ class ErrorResponse(BaseModel):
 
     error: str = Field(..., description="Error message")
     detail: str | None = Field(None, description="Additional error details")
+
+
+# S3 Bucket naming validation pattern
+BUCKET_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9\-\.]*[a-z0-9]$")
+
+
+def validate_bucket_name(name: str) -> None:
+    """
+    Validate S3 bucket name according to AWS rules.
+
+    Args:
+        name: Bucket name to validate
+
+    Raises:
+        ValueError: If bucket name violates S3 naming rules
+    """
+    if not (3 <= len(name) <= 63):
+        raise ValueError("Bucket name must be 3-63 characters")
+
+    if not name.islower():
+        raise ValueError("Bucket name must be lowercase")
+
+    if not all(c.isalnum() or c in ["-", "."] for c in name):
+        raise ValueError(
+            "Bucket name must contain only lowercase alphanumeric, hyphens, and periods"
+        )
+
+    if name.startswith("-") or name.endswith("-"):
+        raise ValueError("Bucket name cannot start or end with hyphen")
+
+    if ".." in name:
+        raise ValueError("Bucket name cannot contain consecutive periods")
+
+    # Check if IP address format
+    if name.replace(".", "").isdigit() and name.count(".") == 3:
+        raise ValueError("Bucket name cannot be formatted as IP address")
+
+    if not BUCKET_NAME_PATTERN.match(name):
+        raise ValueError(
+            "Bucket name must start and end with alphanumeric character"
+        )
+
+
+class CreateBucketRequest(BaseModel):
+    """Request model for creating an S3 bucket."""
+
+    name: str = Field(..., description="Bucket name (3-63 chars, lowercase)")
+    tenant_id: str = Field(
+        ..., description="Tenant ID (12-digit MiniStack access key)"
+    )
+    project: str | None = Field(
+        None, description="Control-plane project tag"
+    )
+    versioning: bool = Field(
+        False, description="Enable versioning on bucket"
+    )
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Control-plane tags"
+    )
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate bucket name."""
+        validate_bucket_name(v)
+        return v
+
+    @field_validator("tenant_id")
+    @classmethod
+    def validate_tenant_id(cls, v: str) -> str:
+        """Validate tenant ID format."""
+        if not re.match(r"^\d{12}$", v):
+            raise ValueError("Tenant ID must be exactly 12 digits")
+        return v
+
+
+class BucketResponse(BaseModel):
+    """Response model for S3 bucket details."""
+
+    name: str = Field(..., description="Bucket name")
+    tenant_id: str = Field(..., description="Owning tenant ID")
+    project: str | None = Field(None, description="Control-plane project tag")
+    arn: str = Field(..., description="Bucket ARN")
+    created_at: str = Field(..., description="Creation timestamp (ISO 8601)")
+    versioning: str = Field(
+        ..., description="Versioning status (Enabled, Suspended, or empty)"
+    )
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Control-plane tags"
+    )
+    state: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Bucket state (region, object_count, size_bytes)",
+    )
+
+
+class BucketListResponse(BaseModel):
+    """Response model for listing S3 buckets."""
+
+    buckets: list[BucketResponse] = Field(
+        ..., description="List of buckets for tenant"
+    )
+    tenant_id: str = Field(..., description="Tenant ID context")
+    total: int = Field(..., description="Total bucket count")
+
+
+class UpdateVersioningRequest(BaseModel):
+    """Request model for updating bucket versioning."""
+
+    enabled: bool = Field(
+        ..., description="Enable or disable versioning"
+    )
+    tenant_id: str = Field(..., description="Tenant ID (for validation)")
+
+
+class DeleteBucketResponse(BaseModel):
+    """Response model for deleting a bucket."""
+
+    deleted: str = Field(..., description="Name of deleted bucket")
+    objects_deleted: int = Field(
+        0, description="Number of objects deleted (if force=true)"
+    )
