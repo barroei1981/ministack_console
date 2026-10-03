@@ -699,11 +699,16 @@ Add Lambda endpoints to `api/routes/resources.py` and create Pydantic models.
 
 ## Outcome
 
-(To be filled after implementation)
-
-- **Delivered**: 
-- **PRD coverage**: 
-- **Architecture impact**: 
-- **Deferred**: 
-- **Risks introduced**: 
+- **Delivered**: Complete Lambda backend CRUD API with 6 endpoints (list, create, get, update code, update configuration, delete), dual-write to FalkorDB, SSE event emission, dependency detection from environment variables, structured logging, audit trails, base64-encoded ZIP upload support
+- **PRD coverage**: FR-5 (Lambda Service Dashboard) backend portion fully delivered — function management API with CRUD operations, environment variable support, memory/timeout configuration
+- **Architecture impact**: None — follows control-plane architecture (dual-write pattern), reuses S3Service patterns, integrates with event_bus for SSE
+- **Deferred**: Dependency relationship edges in FalkorDB (detection logs dependency but doesn't create graph edges yet — graph edge creation API not specified), function invocation endpoint (POST /invoke), function logs retrieval, event source mappings
+- **Risks introduced**: None — boto3 client follows S3 pattern, rollback on FalkorDB failure, structured logging + audit trails for all operations
 - **Wiring**:
+  - LambdaService class at `api/services/lambda_.py` with full CRUD methods
+  - 6 API endpoints at `api/routes/resources.py` lines 648-1095 under `/resources/lambda/functions`
+  - Pydantic models at `api/models.py` lines 232-367 (CreateFunctionRequest, FunctionResponse, etc.)
+  - Dependency detection at `lambda_.py:612-683` (S3, SQS, DynamoDB references from environment variables)
+  - SSE events emitted for RESOURCE_CREATED (line 307), RESOURCE_UPDATED (lines 409, 528), RESOURCE_DELETED (line 579)
+  - Audit logs at lambda_.py:310-319 for function creation
+  - Rollback pattern at lambda_.py:280-285 (delete from MiniStack if FalkorDB write fails)
