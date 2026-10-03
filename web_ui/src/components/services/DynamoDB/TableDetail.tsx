@@ -15,15 +15,23 @@ export function TableDetail() {
   // Get tenant_id from URL query params
   const tenantId = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('tenant_id');
+    return params.get('tenant_id') || '000000000001'; // Default tenant
   }, []);
 
-  const { data: response } = useTables(tenantId);
+  const { data: response, isLoading } = useTables(tenantId);
 
-  if (!tableName || !tenantId) {
+  if (!tableName) {
     return (
       <div className="p-8 text-center text-gray-600">
-        Invalid table name or tenant ID
+        Invalid table name
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="p-8 text-center text-gray-600">
+        Loading table details...
       </div>
     );
   }

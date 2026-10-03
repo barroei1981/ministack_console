@@ -79,7 +79,7 @@ export function TableList() {
       label: 'Table name',
       render: (table: DynamoDBTable) => (
         <button
-          onClick={() => navigate(`/dynamodb/tables/${table.name}`)}
+          onClick={() => navigate(`/dynamodb/tables/${table.name}?tenant_id=${tenantId}`)}
           className="text-blue-600 hover:underline font-medium"
         >
           {table.name}

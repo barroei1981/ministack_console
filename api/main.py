@@ -34,6 +34,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         port=API_PORT,
     )
 
+    # Start background resource sync
+    from api.background_sync import start_background_sync
+    start_background_sync()
+    log_operational("Background resource discovery enabled")
+
     yield
 
     # Shutdown

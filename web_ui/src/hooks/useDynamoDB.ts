@@ -1,31 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import client from '../api/client';
 import type {
   CreateTableRequest,
   ScanItemsResponse,
   TableListResponse,
 } from '../types/dynamodb';
 
-const API_BASE = 'http://localhost:8000/api';
-
 export function useTables(tenantId: string | null) {
   return useQuery<TableListResponse>({
     queryKey: ['dynamodb', 'tables', tenantId],
     queryFn: async () => {
-      if (!tenantId) throw new Error('Tenant ID required');
-
-      const response = await fetch(
-        `${API_BASE}/resources/dynamodb/tables?tenant_id=${tenantId}`,
-        {
-          headers: { 'X-Tenant-ID': tenantId },
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to fetch tables');
+      if (!tenantId) {
+        return { tables: [], tenant_id: '', total: 0 };
       }
-
-      return response.json();
+      const response = await client.get<TableListResponse>(
+        '/resources/dynamodb/tables',
+        { params: { tenant_id: tenantId } }
+      );
+      return response.data;
     },
     enabled: !!tenantId,
   });
@@ -36,21 +28,8 @@ export function useCreateTable() {
 
   return useMutation({
     mutationFn: async (request: CreateTableRequest) => {
-      const response = await fetch(`${API_BASE}/resources/dynamodb/tables`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': request.tenant_id,
-        },
-        body: JSON.stringify(request),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to create table');
-      }
-
-      return response.json();
+      const response = await client.post('/resources/dynamodb/tables', request);
+      return response.data;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
@@ -71,20 +50,11 @@ export function useDeleteTable() {
       tableName: string;
       tenantId: string;
     }) => {
-      const response = await fetch(
-        `${API_BASE}/resources/dynamodb/tables/${tableName}?tenant_id=${tenantId}`,
-        {
-          method: 'DELETE',
-          headers: { 'X-Tenant-ID': tenantId },
-        }
+      const response = await client.delete(
+        `/resources/dynamodb/tables/${tableName}`,
+        { params: { tenant_id: tenantId } }
       );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to delete table');
-      }
-
-      return response.json();
+      return response.data;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
@@ -98,21 +68,14 @@ export function useTableItems(tableName: string | null, tenantId: string | null)
   return useQuery<ScanItemsResponse>({
     queryKey: ['dynamodb', 'items', tableName, tenantId],
     queryFn: async () => {
-      if (!tableName || !tenantId) throw new Error('Table name and tenant ID required');
-
-      const response = await fetch(
-        `${API_BASE}/resources/dynamodb/tables/${tableName}/items?tenant_id=${tenantId}&limit=100`,
-        {
-          headers: { 'X-Tenant-ID': tenantId },
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to fetch items');
+      if (!tableName || !tenantId) {
+        return { items: [], count: 0, scanned_count: 0 };
       }
-
-      return response.json();
+      const response = await client.get<ScanItemsResponse>(
+        `/resources/dynamodb/tables/${tableName}/items`,
+        { params: { tenant_id: tenantId, limit: 100 } }
+      );
+      return response.data;
     },
     enabled: !!tableName && !!tenantId,
   });
@@ -131,24 +94,11 @@ export function usePutItem() {
       tenantId: string;
       item: Record<string, any>;
     }) => {
-      const response = await fetch(
-        `${API_BASE}/resources/dynamodb/tables/${tableName}/items`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Tenant-ID': tenantId,
-          },
-          body: JSON.stringify({ tenant_id: tenantId, item }),
-        }
+      const response = await client.put(
+        `/resources/dynamodb/tables/${tableName}/items`,
+        { tenant_id: tenantId, item }
       );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to put item');
-      }
-
-      return response.json();
+      return response.data;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({
@@ -171,24 +121,11 @@ export function useDeleteItem() {
       tenantId: string;
       key: Record<string, any>;
     }) => {
-      const response = await fetch(
-        `${API_BASE}/resources/dynamodb/tables/${tableName}/items`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Tenant-ID': tenantId,
-          },
-          body: JSON.stringify({ tenant_id: tenantId, key }),
-        }
+      const response = await client.delete(
+        `/resources/dynamodb/tables/${tableName}/items`,
+        { data: { tenant_id: tenantId, key } }
       );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.detail || 'Failed to delete item');
-      }
-
-      return response.json();
+      return response.data;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({

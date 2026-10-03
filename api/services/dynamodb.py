@@ -53,12 +53,15 @@ class DynamoDBService:
         Returns:
             boto3 DynamoDB client configured for MiniStack endpoint
         """
+        import os
+        endpoint = os.getenv("MINISTACK_ENDPOINT", "http://localhost:4566")
+
         session = boto3.Session(
             aws_access_key_id=self.tenant_id,
             aws_secret_access_key="dummy",
             region_name="us-east-1",
         )
-        return session.client("dynamodb", endpoint_url="http://localhost:4566")
+        return session.client("dynamodb", endpoint_url=endpoint)
 
     async def list_tables(self) -> list[dict[str, Any]]:
         """
