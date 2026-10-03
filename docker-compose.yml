@@ -1,25 +1,6 @@
 version: '3.8'
 
 services:
-  # MiniStack - AWS emulator
-  ministack:
-    image: ministackorg/ministack:latest
-    container_name: ministack_console_ministack
-    ports:
-      - "4566:4566"
-    environment:
-      - SERVICES=s3,lambda,dynamodb,sqs,sns,cloudwatch
-      - DEBUG=1
-    volumes:
-      - ministack_data:/var/lib/ministack
-    networks:
-      - ministack_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_ministack/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # FalkorDB - Graph database for control-plane
   falkordb:
     image: falkordb/falkordb:latest
@@ -46,7 +27,7 @@ services:
       - "3001:3001"
     environment:
       - API_PORT=3001
-      - MINISTACK_ENDPOINT=http://ministack:4566
+      - MINISTACK_ENDPOINT=http://mari-ann-ministack:4566
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
       - FALKORDB_DB=0
@@ -54,12 +35,11 @@ services:
       - AWS_SECRET_ACCESS_KEY=dummy
       - AWS_DEFAULT_REGION=us-east-1
     depends_on:
-      ministack:
-        condition: service_healthy
       falkordb:
         condition: service_healthy
     networks:
       - ministack_network
+      - mari_ann_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
       interval: 10s
@@ -85,6 +65,7 @@ services:
         condition: service_healthy
     networks:
       - ministack_network
+      - mari_ann_network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
       interval: 10s
@@ -107,14 +88,15 @@ services:
         condition: service_healthy
     networks:
       - ministack_network
+      - mari_ann_network
     restart: unless-stopped
 
 networks:
   ministack_network:
     driver: bridge
+  mari_ann_network:
+    external: true
 
 volumes:
-  ministack_data:
-    driver: local
   falkordb_data:
     driver: local

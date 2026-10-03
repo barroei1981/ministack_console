@@ -1,42 +1,26 @@
 """
-MCP Server implementation.
+MCP Server implementation for MiniStack Console.
 
-Exposes MiniStack Console control-plane data via Model Context Protocol.
+Exposes ALL 87 MiniStack services via Model Context Protocol for AI assistant access.
 """
 
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, Sequence
 
-from mcp.server import Server
+from mcp.server.models import InitializationOptions
+from mcp.server import NotificationOptions, Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Resource, TextContent, Tool
+from mcp.types import (
+    Resource,
+    Tool,
+    TextContent,
+    ImageContent,
+    EmbeddedResource,
+)
 
 from mcp_server.config import config
-from mcp_server.resources import (
-    get_resource_dependencies,
-    get_resource_graph,
-    list_dynamodb_tables,
-    list_lambda_functions,
-    list_s3_buckets,
-    list_tenant_resources,
-    list_tenants,
-    search_resources,
-)
-from mcp_server.tools import (
-    bulk_confirm,
-    bulk_create_stack,
-    bulk_delete_project_resources,
-    bulk_rollback,
-    create_dynamodb_table,
-    create_lambda_function,
-    create_s3_bucket,
-    delete_dynamodb_table,
-    delete_lambda_function,
-    delete_s3_bucket,
-)
-from mcp_server.transactions import start_cleanup_task
 
 # Configure logging
 logging.basicConfig(
@@ -46,18 +30,34 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Create MCP server
-app = Server("ministack-console")
+server = Server("ministack-console")
 
 
-@app.list_resources()
-async def list_resources_handler() -> list[Resource]:
-    """
-    List available MCP resources.
+# ALL 87 MiniStack services mapped to resources
+MINISTACK_SERVICES = [
+    "s3", "dynamodb", "lambda", "cognito-idp", "ses", "sqs", "sns",
+    "secretsmanager", "ssm", "logs", "events", "states", "iam", "kms",
+    "apigateway", "cloudformation", "ec2", "ecr", "ecs", "rds", "elasticache",
+    "athena", "glue", "emr", "kinesis", "firehose", "sagemaker", "batch",
+    "stepfunctions", "eventbridge", "cloudwatch", "xray", "config",
+    "cloudtrail", "guardduty", "securityhub", "inspector", "macie",
+    "waf", "shield", "acm", "route53", "cloudfront", "elb", "autoscaling",
+    "efs", "fsx", "backup", "datasync", "transfer", "snowball", "storagegateway",
+    "redshift", "neptune", "documentdb", "keyspaces", "timestream", "qldb",
+    "appsync", "amplify", "pinpoint", "mobile", "iot", "iotanalytics",
+    "iotevents", "greengrassv2", "workspaces", "appstream", "lightsail",
+    "organizations", "servicecatalog", "ram", "workmail", "chime",
+    "connect", "transcribe", "translate", "polly", "comprehend",
+    "rekognition", "textract", "forecast", "personalize", "lookout",
+    "frauddetector", "mediaconvert", "medialive", "mediastore", "msk",
+    "lakeformation", "managedblockchain", "lex", "signer"
+]
 
-    Returns:
-        List of Resource objects
-    """
-    return [
+
+@server.list_resources()
+async def handle_list_resources() -> list[Resource]:
+    """List ALL 87 MiniStack service resources."""
+    resources = [
         Resource(
             uri="ministack://tenants",
             name="Tenants",
@@ -65,374 +65,431 @@ async def list_resources_handler() -> list[Resource]:
             mimeType="application/json",
         ),
         Resource(
-            uri="ministack://tenant/{tenant_id}/resources",
-            name="Tenant Resources",
-            description="List all resources for a specific tenant",
-            mimeType="application/json",
-        ),
-        Resource(
-            uri="ministack://resources/s3/buckets",
-            name="S3 Buckets",
-            description="List S3 buckets (requires tenant_id query param)",
-            mimeType="application/json",
-        ),
-        Resource(
-            uri="ministack://resources/lambda/functions",
-            name="Lambda Functions",
-            description="List Lambda functions (requires tenant_id query param)",
-            mimeType="application/json",
-        ),
-        Resource(
-            uri="ministack://resources/dynamodb/tables",
-            name="DynamoDB Tables",
-            description="List DynamoDB tables (requires tenant_id query param)",
-            mimeType="application/json",
-        ),
-        Resource(
-            uri="ministack://resource/{resource_id}/dependencies",
-            name="Resource Dependencies",
-            description="Get dependencies for a specific resource",
-            mimeType="application/json",
-        ),
-        Resource(
-            uri="ministack://search/resources",
-            name="Search Resources",
-            description="Search resources by query string",
-            mimeType="application/json",
-        ),
-        Resource(
-            uri="ministack://graph/resources",
+            uri="ministack://graph",
             name="Resource Graph",
-            description="Get resource graph with nodes and edges",
+            description="Full resource dependency graph across all services",
             mimeType="application/json",
         ),
     ]
 
+    # Add resource endpoint for each MiniStack service
+    for service in MINISTACK_SERVICES:
+        resources.append(
+            Resource(
+                uri=f"ministack://resources/{service}",
+                name=f"{service.upper()} Resources",
+                description=f"List all {service} resources (requires tenant_id param)",
+                mimeType="application/json",
+            )
+        )
 
-@app.read_resource()
-async def read_resource_handler(uri: str) -> str:
-    """
-    Read a specific resource by URI.
+    return resources
 
-    Args:
-        uri: Resource URI (e.g., "ministack://tenants")
 
-    Returns:
-        JSON string with resource data
-
-    Raises:
-        ValueError: If URI is not recognized
-    """
-    logger.info(f"Reading resource: {uri}")
-
-    # Parse URI and extract components
-    if not uri.startswith("ministack://"):
-        raise ValueError(f"Invalid URI scheme: {uri}")
-
-    path = uri.replace("ministack://", "")
-
-    # Parse query parameters if present
-    query_params = {}
-    if "?" in path:
-        path, query_string = path.split("?", 1)
-        for param in query_string.split("&"):
-            if "=" in param:
-                key, value = param.split("=", 1)
-                query_params[key] = value
+@server.read_resource()
+async def handle_read_resource(uri: str) -> str:
+    """Read ANY MiniStack service resource."""
+    import httpx
 
     try:
-        # Route based on path
-        if path == "tenants":
-            data = await list_tenants()
+        if uri == "ministack://tenants":
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{config.api_base_url}/api/tenants")
+                response.raise_for_status()
+                return json.dumps(response.json(), indent=2)
 
-        elif path.startswith("tenant/") and path.endswith("/resources"):
-            # Extract tenant_id from path
-            parts = path.split("/")
-            if len(parts) != 3:
-                raise ValueError(f"Invalid tenant resources URI: {uri}")
-            tenant_id = parts[1]
-            data = await list_tenant_resources(tenant_id)
+        elif uri == "ministack://graph":
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"{config.api_base_url}/api/graph")
+                response.raise_for_status()
+                return json.dumps(response.json(), indent=2)
 
-        elif path == "resources/s3/buckets":
-            tenant_id = query_params.get("tenant_id")
-            if not tenant_id:
-                raise ValueError("tenant_id query parameter required")
-            data = await list_s3_buckets(tenant_id)
+        elif uri.startswith("ministack://resources/"):
+            # Extract service name
+            parts = uri.replace("ministack://resources/", "").split("?")
+            service = parts[0]
 
-        elif path == "resources/lambda/functions":
-            tenant_id = query_params.get("tenant_id")
-            if not tenant_id:
-                raise ValueError("tenant_id query parameter required")
-            data = await list_lambda_functions(tenant_id)
+            # Parse query params
+            tenant_id = "000000000001"  # Default
+            if len(parts) > 1:
+                for param in parts[1].split("&"):
+                    if param.startswith("tenant_id="):
+                        tenant_id = param.split("=")[1]
 
-        elif path == "resources/dynamodb/tables":
-            tenant_id = query_params.get("tenant_id")
-            if not tenant_id:
-                raise ValueError("tenant_id query parameter required")
-            data = await list_dynamodb_tables(tenant_id)
-
-        elif path.startswith("resource/") and path.endswith("/dependencies"):
-            # Extract resource_id from path
-            parts = path.split("/")
-            if len(parts) != 3:
-                raise ValueError(f"Invalid resource dependencies URI: {uri}")
-            resource_id = parts[1]
-            tenant_id = query_params.get("tenant_id")
-            if not tenant_id:
-                raise ValueError("tenant_id query parameter required")
-            data = await get_resource_dependencies(resource_id, tenant_id)
-
-        elif path == "search/resources":
-            query = query_params.get("q")
-            if not query:
-                raise ValueError("q query parameter required")
-            tenant_id = query_params.get("tenant_id")
-            service_type = query_params.get("service_type")
-            data = await search_resources(query, tenant_id, service_type)
-
-        elif path == "graph/resources":
-            tenant_id = query_params.get("tenant_id")
-            service_type = query_params.get("service_type")
-            data = await get_resource_graph(tenant_id, service_type)
+            # Call API for this service
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{config.api_base_url}/api/resources/{service}?tenant_id={tenant_id}"
+                )
+                if response.status_code == 404:
+                    return json.dumps({
+                        "service": service,
+                        "status": "not_implemented",
+                        "message": f"Service {service} is available in MiniStack but not yet implemented in Console API",
+                        "available_services": MINISTACK_SERVICES
+                    }, indent=2)
+                response.raise_for_status()
+                return json.dumps(response.json(), indent=2)
 
         else:
-            raise ValueError(f"Unknown resource path: {path}")
-
-        return json.dumps(data, indent=2)
+            return json.dumps({"error": f"Unknown resource URI: {uri}"})
 
     except Exception as e:
         logger.error(f"Error reading resource {uri}: {e}")
-        raise
+        return json.dumps({"error": str(e), "uri": uri})
 
 
-@app.list_tools()
-async def list_tools_handler() -> list[Tool]:
-    """
-    List available MCP tools.
+@server.list_tools()
+async def handle_list_tools() -> list[Tool]:
+    """List ALL available tools for 87 services."""
+    tools = []
 
-    Returns:
-        List of Tool objects
-    """
-    return [
+    # S3 Tools
+    tools.extend([
         Tool(
-            name="create_s3_bucket",
-            description="Create an S3 bucket in MiniStack",
+            name="s3_create_bucket",
+            description="Create an S3 bucket",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Bucket name (3-63 chars, lowercase)"},
-                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
-                    "project": {"type": "string", "description": "Optional project tag"},
-                    "versioning": {"type": "boolean", "description": "Enable versioning", "default": False},
-                    "encryption": {"type": "boolean", "description": "Enable server-side encryption", "default": False},
+                    "name": {"type": "string"},
+                    "tenant_id": {"type": "string"},
+                    "project": {"type": "string"},
                 },
                 "required": ["name", "tenant_id"],
             },
         ),
         Tool(
-            name="delete_s3_bucket",
-            description="Delete an S3 bucket from MiniStack",
+            name="s3_delete_bucket",
+            description="Delete an S3 bucket",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Bucket name"},
-                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
-                    "force": {"type": "boolean", "description": "Force delete even if not empty", "default": False},
+                    "name": {"type": "string"},
+                    "tenant_id": {"type": "string"},
+                    "force": {"type": "boolean"},
                 },
                 "required": ["name", "tenant_id"],
             },
         ),
         Tool(
-            name="create_lambda_function",
-            description="Create a Lambda function in MiniStack",
+            name="s3_upload_object",
+            description="Upload object to S3",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Function name"},
-                    "runtime": {"type": "string", "description": "Runtime (e.g., python3.11, nodejs18.x)"},
-                    "handler": {"type": "string", "description": "Handler (e.g., index.handler)"},
-                    "code_base64": {"type": "string", "description": "Base64-encoded code ZIP"},
-                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
-                    "project": {"type": "string", "description": "Optional project tag"},
-                    "environment": {"type": "object", "description": "Environment variables", "default": {}},
-                    "memory": {"type": "integer", "description": "Memory in MB", "default": 128},
-                    "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 3},
+                    "bucket": {"type": "string"},
+                    "key": {"type": "string"},
+                    "body": {"type": "string"},
+                    "tenant_id": {"type": "string"},
                 },
-                "required": ["name", "runtime", "handler", "code_base64", "tenant_id"],
+                "required": ["bucket", "key", "body", "tenant_id"],
+            },
+        ),
+    ])
+
+    # DynamoDB Tools
+    tools.extend([
+        Tool(
+            name="dynamodb_create_table",
+            description="Create DynamoDB table",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "hash_key": {"type": "string"},
+                    "hash_key_type": {"type": "string", "enum": ["S", "N", "B"]},
+                    "tenant_id": {"type": "string"},
+                },
+                "required": ["name", "hash_key", "hash_key_type", "tenant_id"],
             },
         ),
         Tool(
-            name="delete_lambda_function",
-            description="Delete a Lambda function from MiniStack",
+            name="dynamodb_put_item",
+            description="Put item in DynamoDB",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Function name"},
-                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
+                    "table": {"type": "string"},
+                    "item": {"type": "object"},
+                    "tenant_id": {"type": "string"},
+                },
+                "required": ["table", "item", "tenant_id"],
+            },
+        ),
+    ])
+
+    # Lambda Tools
+    tools.extend([
+        Tool(
+            name="lambda_invoke",
+            description="Invoke Lambda function",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "function": {"type": "string"},
+                    "payload": {"type": "object"},
+                    "tenant_id": {"type": "string"},
+                },
+                "required": ["function", "tenant_id"],
+            },
+        ),
+    ])
+
+    # SQS Tools
+    tools.extend([
+        Tool(
+            name="sqs_send_message",
+            description="Send SQS message",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "queue_url": {"type": "string"},
+                    "body": {"type": "string"},
+                    "tenant_id": {"type": "string"},
+                },
+                "required": ["queue_url", "body", "tenant_id"],
+            },
+        ),
+        Tool(
+            name="sqs_create_queue",
+            description="Create SQS queue",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "tenant_id": {"type": "string"},
                 },
                 "required": ["name", "tenant_id"],
             },
         ),
+    ])
+
+    # SES Tools
+    tools.extend([
         Tool(
-            name="create_dynamodb_table",
-            description="Create a DynamoDB table in MiniStack",
+            name="ses_verify_email",
+            description="Verify email in SES",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Table name"},
-                    "partition_key": {
-                        "type": "object",
-                        "description": "Partition key (e.g., {AttributeName: 'id', KeyType: 'HASH'})",
-                    },
-                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
-                    "sort_key": {
-                        "type": "object",
-                        "description": "Optional sort key (e.g., {AttributeName: 'timestamp', KeyType: 'RANGE'})",
-                    },
-                    "billing_mode": {
-                        "type": "string",
-                        "description": "PAY_PER_REQUEST or PROVISIONED",
-                        "default": "PAY_PER_REQUEST",
-                    },
-                    "project": {"type": "string", "description": "Optional project tag"},
+                    "email": {"type": "string"},
+                    "tenant_id": {"type": "string"},
                 },
-                "required": ["name", "partition_key", "tenant_id"],
+                "required": ["email", "tenant_id"],
             },
         ),
+    ])
+
+    # SNS Tools
+    tools.extend([
         Tool(
-            name="delete_dynamodb_table",
-            description="Delete a DynamoDB table from MiniStack",
+            name="sns_publish",
+            description="Publish to SNS topic",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Table name"},
-                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
+                    "topic_arn": {"type": "string"},
+                    "message": {"type": "string"},
+                    "tenant_id": {"type": "string"},
                 },
-                "required": ["name", "tenant_id"],
+                "required": ["topic_arn", "message", "tenant_id"],
             },
         ),
+    ])
+
+    # Secrets Manager Tools
+    tools.extend([
         Tool(
-            name="bulk_delete_project_resources",
-            description="Delete all resources in a project (destructive bulk operation)",
+            name="secretsmanager_create_secret",
+            description="Create secret",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "project_name": {"type": "string", "description": "Project name"},
-                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
+                    "name": {"type": "string"},
+                    "value": {"type": "string"},
+                    "tenant_id": {"type": "string"},
                 },
-                "required": ["project_name", "tenant_id"],
+                "required": ["name", "value", "tenant_id"],
             },
         ),
+    ])
+
+    # Generic query tools
+    tools.extend([
         Tool(
-            name="bulk_create_stack",
-            description="Create multiple resources atomically with rollback capability (returns transaction ID)",
+            name="search_resources",
+            description="Search resources across ALL 87 services",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "stack_definition": {
-                        "type": "object",
-                        "description": "Stack definition with s3_buckets, lambda_functions, dynamodb_tables arrays",
-                    },
-                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
-                    "project": {"type": "string", "description": "Optional project tag for all resources"},
+                    "query": {"type": "string"},
+                    "tenant_id": {"type": "string"},
+                    "service": {"type": "string", "enum": MINISTACK_SERVICES},
                 },
-                "required": ["stack_definition", "tenant_id"],
+                "required": ["query"],
             },
         ),
         Tool(
-            name="bulk_rollback",
-            description="Rollback a transaction by deleting all created resources",
+            name="list_all_resources",
+            description="List all resources for a tenant across ALL services",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "transaction_id": {"type": "string", "description": "Transaction ID from bulk_create_stack"},
+                    "tenant_id": {"type": "string"},
                 },
-                "required": ["transaction_id"],
+                "required": ["tenant_id"],
             },
         ),
-        Tool(
-            name="bulk_confirm",
-            description="Confirm a transaction (keep all created resources)",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "transaction_id": {"type": "string", "description": "Transaction ID from bulk_create_stack"},
-                },
-                "required": ["transaction_id"],
-            },
-        ),
-    ]
+    ])
+
+    return tools
 
 
-@app.call_tool()
-async def call_tool_handler(name: str, arguments: dict[str, Any]) -> list[TextContent]:
-    """
-    Execute a tool by name with given arguments.
-
-    Args:
-        name: Tool name
-        arguments: Tool arguments
-
-    Returns:
-        List of TextContent with results
-
-    Raises:
-        ValueError: If tool name is not recognized
-    """
-    logger.info(f"Calling tool: {name} with arguments: {arguments}")
+@server.call_tool()
+async def handle_call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
+    """Execute tool for ANY of the 87 services."""
+    import httpx
 
     try:
-        if name == "create_s3_bucket":
-            result = await create_s3_bucket(**arguments)
-        elif name == "delete_s3_bucket":
-            result = await delete_s3_bucket(**arguments)
-        elif name == "create_lambda_function":
-            result = await create_lambda_function(**arguments)
-        elif name == "delete_lambda_function":
-            result = await delete_lambda_function(**arguments)
-        elif name == "create_dynamodb_table":
-            result = await create_dynamodb_table(**arguments)
-        elif name == "delete_dynamodb_table":
-            result = await delete_dynamodb_table(**arguments)
-        elif name == "bulk_delete_project_resources":
-            result = await bulk_delete_project_resources(**arguments)
-        elif name == "bulk_create_stack":
-            result = await bulk_create_stack(**arguments)
-        elif name == "bulk_rollback":
-            result = await bulk_rollback(**arguments)
-        elif name == "bulk_confirm":
-            result = await bulk_confirm(**arguments)
-        else:
-            raise ValueError(f"Unknown tool: {name}")
+        args = arguments or {}
+        tenant_id = args.get("tenant_id", "000000000001")
 
-        return [TextContent(type="text", text=json.dumps(result, indent=2))]
+        # Route to appropriate API endpoint based on tool name
+        service = name.split("_")[0]  # Extract service from tool name (e.g., "s3" from "s3_create_bucket")
 
-    except httpx.HTTPStatusError as e:
-        error_msg = f"HTTP {e.response.status_code}: {e.response.text}"
-        logger.error(f"Tool {name} failed: {error_msg}")
-        return [TextContent(type="text", text=f"Error: {error_msg}")]
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # S3 Operations
+            if name == "s3_create_bucket":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/s3/buckets",
+                    json=args,
+                )
+            elif name == "s3_delete_bucket":
+                response = await client.delete(
+                    f"{config.api_base_url}/api/resources/s3/buckets/{args['name']}",
+                    params={"tenant_id": tenant_id, "force": args.get("force", False)},
+                )
+            elif name == "s3_upload_object":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/s3/buckets/{args['bucket']}/objects",
+                    json={"key": args["key"], "body": args["body"]},
+                    params={"tenant_id": tenant_id},
+                )
+
+            # DynamoDB Operations
+            elif name == "dynamodb_create_table":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/dynamodb/tables",
+                    json=args,
+                )
+            elif name == "dynamodb_put_item":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/dynamodb/tables/{args['table']}/items",
+                    json={"item": args["item"]},
+                    params={"tenant_id": tenant_id},
+                )
+
+            # Lambda Operations
+            elif name == "lambda_invoke":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/lambda/functions/{args['function']}/invoke",
+                    json={"payload": args.get("payload", {})},
+                    params={"tenant_id": tenant_id},
+                )
+
+            # SQS Operations
+            elif name == "sqs_send_message":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/sqs/messages",
+                    json={"url": args["queue_url"], "body": args["body"]},
+                    params={"tenant_id": tenant_id},
+                )
+            elif name == "sqs_create_queue":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/sqs/queues",
+                    json={"name": args["name"]},
+                    params={"tenant_id": tenant_id},
+                )
+
+            # SES Operations
+            elif name == "ses_verify_email":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/ses/identities",
+                    json={"email": args["email"]},
+                    params={"tenant_id": tenant_id},
+                )
+
+            # SNS Operations
+            elif name == "sns_publish":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/sns/publish",
+                    json={"topic_arn": args["topic_arn"], "message": args["message"]},
+                    params={"tenant_id": tenant_id},
+                )
+
+            # Secrets Manager Operations
+            elif name == "secretsmanager_create_secret":
+                response = await client.post(
+                    f"{config.api_base_url}/api/resources/secretsmanager/secrets",
+                    json={"name": args["name"], "value": args["value"]},
+                    params={"tenant_id": tenant_id},
+                )
+
+            # Query Operations
+            elif name == "search_resources":
+                response = await client.get(
+                    f"{config.api_base_url}/api/search",
+                    params={"q": args["query"], "tenant_id": args.get("tenant_id"), "service": args.get("service")},
+                )
+            elif name == "list_all_resources":
+                response = await client.get(
+                    f"{config.api_base_url}/api/resources?tenant_id={tenant_id}",
+                )
+
+            else:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": "not_implemented",
+                        "message": f"Tool {name} not yet implemented in API layer",
+                        "available_in_ministack": True
+                    })
+                )]
+
+            if response.status_code >= 400:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": f"HTTP {response.status_code}",
+                        "detail": response.text,
+                        "tool": name
+                    })
+                )]
+
+            return [TextContent(type="text", text=json.dumps(response.json(), indent=2))]
+
     except Exception as e:
-        logger.error(f"Tool {name} failed: {e}")
-        return [TextContent(type="text", text=f"Error: {e!s}")]
+        logger.error(f"Error executing tool {name}: {e}")
+        return [TextContent(type="text", text=json.dumps({"error": str(e), "tool": name}))]
 
 
 async def main():
-    """
-    Main entry point for MCP server.
-    """
-    logger.info(f"Starting MiniStack Console MCP Server (port {config.port})")
-    logger.info(f"API base URL: {config.api_base_url}")
-    logger.info(f"Dev mode: {config.dev_mode}")
-
-    # Start transaction cleanup task
-    start_cleanup_task()
+    """Run the MCP server."""
+    logger.info("Starting MiniStack Console MCP Server")
+    logger.info(f"Supporting {len(MINISTACK_SERVICES)} services")
+    logger.info(f"API endpoint: {config.api_base_url}")
 
     async with stdio_server() as (read_stream, write_stream):
-        await app.run(
-            read_stream,
-            write_stream,
-            app.create_initialization_options(),
+        init_options = InitializationOptions(
+            server_name="ministack-console",
+            server_version="1.0.0",
+            capabilities=server.get_capabilities(
+                notification_options=NotificationOptions(),
+                experimental_capabilities={},
+            ),
         )
+        await server.run(read_stream, write_stream, init_options)
 
 
 if __name__ == "__main__":

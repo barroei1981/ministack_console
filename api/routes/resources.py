@@ -1223,26 +1223,68 @@ async def list_dynamodb_tables(
             count=len(tables),
         )
 
-        return TableListResponse(
-            tables=[
+        # Build response - use cached data from FalkorDB (fast!)
+        # Only query MiniStack if key_schema is missing from node
+        table_responses = []
+        for t in tables:
+            # Try to get key_schema from node first (cached during sync)
+            key_schema_str = t.get("key_schema")
+            attr_def_str = t.get("attribute_definitions")
+
+            if key_schema_str and attr_def_str:
+                # Use cached data - no MiniStack call needed!
+                import json
+                try:
+                    key_schema = json.loads(key_schema_str) if isinstance(key_schema_str, str) else key_schema_str
+                    attribute_definitions = json.loads(attr_def_str) if isinstance(attr_def_str, str) else attr_def_str
+                except:
+                    key_schema = []
+                    attribute_definitions = []
+            else:
+                # Fallback: query MiniStack (slow but works if cache missing)
+                table_name = t["name"]
+                boto_client = dynamodb_service.client
+                try:
+                    table_desc = boto_client.describe_table(TableName=table_name)
+                    table_data = table_desc["Table"]
+                    key_schema = table_data.get("KeySchema", [])
+                    attribute_definitions = table_data.get("AttributeDefinitions", [])
+                except Exception as e:
+                    log_operational(f"Failed to query MiniStack for table {table_name}: {e}")
+                    key_schema = []
+                    attribute_definitions = []
+
+            table_status = t.get("table_status", "UNKNOWN")
+            item_count = t.get("item_count", 0)
+            billing_mode = t.get("billing_mode", "PAY_PER_REQUEST")
+
+            table_responses.append(
                 TableResponse(
                     name=t["name"],
                     tenant_id=t["tenant_id"],
                     project=t.get("project"),
-                    arn=t["arn"],
-                    created_at=t["created_at"],
-                    key_schema=t["state"]["key_schema"],
-                    attribute_definitions=t["state"]["attribute_definitions"],
-                    billing_mode=t["state"]["billing_mode"],
-                    table_status=t["state"]["table_status"],
-                    item_count=t["state"]["item_count"],
+                    arn=t.get("arn", ""),
+                    created_at=t.get("created_at", ""),
+                    key_schema=key_schema,
+                    attribute_definitions=attribute_definitions,
+                    billing_mode=billing_mode,
+                    table_status=table_status,
+                    item_count=item_count,
                     tags=t.get("tags", {}),
-                    state=t["state"],
+                    state={
+                        "key_schema": key_schema,
+                        "attribute_definitions": attribute_definitions,
+                        "billing_mode": billing_mode,
+                        "table_status": table_status,
+                        "item_count": item_count,
+                    },
                 )
-                for t in tables
-            ],
+            )
+
+        return TableListResponse(
+            tables=table_responses,
             tenant_id=tenant_id,
-            total=len(tables),
+            total=len(table_responses),
         )
 
     except HTTPException:
@@ -1514,3 +1556,160 @@ async def delete_dynamodb_item(
         raise HTTPException(
             status_code=500, detail=f"Failed to delete item from DynamoDB table: {e!s}"
         )
+
+
+@router.get("/resources/cognito/user-pools")
+async def list_cognito_user_pools(tenant_id: str = "000000000001"):
+    """List Cognito user pools for a tenant."""
+    try:
+        from api.services.cognito import CognitoService
+
+        cognito = CognitoService(tenant_id)
+        pools = await cognito.list_user_pools()
+
+        return pools
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list Cognito user pools: {str(e)}")
+
+
+@router.get("/resources/cognito/user-pools/{pool_id}")
+async def get_cognito_user_pool(pool_id: str, tenant_id: str = "000000000001"):
+    """Get details of a specific Cognito user pool."""
+    try:
+        from api.services.cognito import CognitoService
+
+        cognito = CognitoService(tenant_id)
+        pool = await cognito.get_user_pool(pool_id)
+
+        if not pool:
+            raise HTTPException(status_code=404, detail="User pool not found")
+
+        return pool
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get user pool: {str(e)}")
+
+
+@router.get("/resources/ses/identities")
+async def list_ses_identities(tenant_id: str = "000000000001"):
+    """List SES verified email identities for a tenant."""
+    try:
+        from api.services.ses import SESService
+        
+        ses = SESService(tenant_id)
+        identities = await ses.list_identities()
+        
+        return identities
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list SES identities: {str(e)}")
+
+
+@router.post("/resources/ses/identities/verify")
+async def verify_ses_identity(email: str, tenant_id: str = "000000000001"):
+    """Send verification email to an address."""
+    try:
+        from api.services.ses import SESService
+        
+        ses = SESService(tenant_id)
+        result = await ses.verify_email_identity(email)
+        
+        return {"message": f"Verification email sent to {email}", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send verification email: {str(e)}")
+
+
+@router.get("/resources/sqs/queues")
+async def list_sqs_queues(tenant_id: str = "000000000001"):
+    """List SQS queues for a tenant."""
+    try:
+        from api.services.sqs import SQSService
+        sqs = SQSService(tenant_id)
+        queues = await sqs.list_queues()
+        return queues
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list queues: {str(e)}")
+
+
+@router.post("/resources/sqs/queues")
+async def create_sqs_queue(queue_name: str, tenant_id: str = "000000000001"):
+    """Create SQS queue."""
+    try:
+        from api.services.sqs import SQSService
+        sqs = SQSService(tenant_id)
+        result = await sqs.create_queue(queue_name)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create queue: {str(e)}")
+
+
+@router.delete("/resources/sqs/queues")
+async def delete_sqs_queue(queue_url: str, tenant_id: str = "000000000001"):
+    """Delete SQS queue."""
+    try:
+        from api.services.sqs import SQSService
+        sqs = SQSService(tenant_id)
+        result = await sqs.delete_queue(queue_url)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete queue: {str(e)}")
+
+
+@router.get("/resources/sqs/queues/{queue_name}")
+async def get_sqs_queue(queue_name: str, tenant_id: str = "000000000001"):
+    """Get SQS queue details."""
+    try:
+        from api.services.sqs import SQSService
+        sqs = SQSService(tenant_id)
+        queue = await sqs.get_queue(queue_name)
+        return queue
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get queue: {str(e)}")
+
+
+@router.post("/resources/sqs/queues/{queue_name}/messages")
+async def send_sqs_message(queue_name: str, message_body: str, tenant_id: str = "000000000001"):
+    """Send message to SQS queue."""
+    try:
+        from api.services.sqs import SQSService
+        sqs = SQSService(tenant_id)
+        result = await sqs.send_message(queue_name, message_body)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+
+
+@router.delete("/resources/ses/identities")
+async def delete_ses_identity(identity: str, tenant_id: str = "000000000001"):
+    """Delete verified email identity."""
+    try:
+        from api.services.ses import SESService
+        ses = SESService(tenant_id)
+        result = await ses.delete_identity(identity)
+        return {"message": f"Identity {identity} deleted", "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete identity: {str(e)}")
+
+
+@router.get("/resources/sns/topics")
+async def list_sns_topics(tenant_id: str = "000000000001"):
+    """List SNS topics."""
+    try:
+        from api.services.sns import SNSService
+        sns = SNSService(tenant_id)
+        topics = await sns.list_topics()
+        return {"topics": topics}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list topics: {str(e)}")
+
+
+@router.get("/resources/secrets")
+async def list_secrets(tenant_id: str = "000000000001"):
+    """List secrets."""
+    try:
+        from api.services.secrets import SecretsService
+        secrets = SecretsService(tenant_id)
+        secret_list = await secrets.list_secrets()
+        return {"secrets": secret_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list secrets: {str(e)}")

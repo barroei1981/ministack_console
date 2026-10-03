@@ -25,4 +25,4 @@ HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:3100/health || exit 1
 
 # Run the MCP server
-CMD ["python", "-m", "mcp_server.server"]
+CMD ["python", "-m", "mcp_server.server_simple"]
