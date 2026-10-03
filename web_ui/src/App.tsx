@@ -8,6 +8,7 @@ import { FunctionList } from './components/services/Lambda/FunctionList';
 import { TableList } from './components/services/DynamoDB/TableList';
 import { TableCreate } from './components/services/DynamoDB/TableCreate';
 import { TableDetail } from './components/services/DynamoDB/TableDetail';
+import { ResourceExplorer } from './components/ResourceExplorer';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +25,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <Routes>
+            <Route path="/explorer" element={<ResourceExplorer />} />
             <Route path="/s3/buckets" element={<BucketList />} />
             <Route path="/s3/buckets/:name" element={<BucketDetail />} />
             <Route path="/lambda/functions" element={<FunctionList />} />
