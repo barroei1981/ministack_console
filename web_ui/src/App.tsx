@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toast } from './components/common/Toast';
 import { BucketList } from './components/services/S3/BucketList';
+import { BucketDetail } from './components/services/S3/BucketDetail';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,6 +21,7 @@ function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/s3/buckets" element={<BucketList />} />
+            <Route path="/s3/buckets/:name" element={<BucketDetail />} />
           </Routes>
         </BrowserRouter>
         <Toast />

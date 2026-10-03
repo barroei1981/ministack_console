@@ -22,3 +22,13 @@ export interface BucketListResponse {
   tenant_id: string;
   total: number;
 }
+
+export interface UpdateVersioningRequest {
+  enabled: boolean;
+  tenant_id: string;
+}
+
+export interface DeleteBucketResponse {
+  deleted: string;
+  objects_deleted: number;
+}

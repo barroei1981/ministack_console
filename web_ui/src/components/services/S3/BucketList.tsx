@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router-dom';
 import { useBuckets } from '../../../hooks/useS3';
+import { useSSE } from '../../../hooks/useSSE';
 import { Button } from '../../common/Button';
 import { Table } from '../../common/Table';
 import { SearchBar } from '../../common/SearchBar';
@@ -21,6 +23,9 @@ export function BucketList() {
 
   const { data, isLoading, error } = useBuckets(tenantId);
 
+  // SSE for real-time updates
+  useSSE(tenantId);
+
   // Filter buckets based on search query
   const filteredBuckets = useMemo(() => {
     if (!data?.buckets) return [];
@@ -36,6 +41,14 @@ export function BucketList() {
       key: 'name',
       label: t('s3.table.name'),
       sortable: true,
+      render: (bucket: Bucket) => (
+        <Link
+          to={`/s3/buckets/${bucket.name}?tenant_id=${tenantId}`}
+          className="text-aws-blue hover:text-aws-orange hover:underline transition-colors"
+        >
+          {bucket.name}
+        </Link>
+      ),
     },
     {
       key: 'arn',
