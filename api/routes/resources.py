@@ -12,6 +12,8 @@ from api.models import (
     CreateTableRequest,
     DeleteBucketResponse,
     DeleteFunctionResponse,
+    DeleteItemRequest,
+    DeleteItemResponse,
     DeleteTableResponse,
     ErrorResponse,
     FunctionListResponse,
@@ -1453,4 +1455,62 @@ async def put_dynamodb_item(
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to put item to DynamoDB table: {e!s}"
+        )
+
+
+@router.delete(
+    "/resources/dynamodb/tables/{table_name}/items",
+    response_model=DeleteItemResponse,
+    summary="Delete item from DynamoDB table",
+    description="Delete an item from a DynamoDB table by primary key",
+)
+async def delete_dynamodb_item(
+    request: Request, table_name: str, delete_request: DeleteItemRequest
+) -> DeleteItemResponse:
+    """
+    Delete an item from a DynamoDB table.
+
+    Args:
+        request: FastAPI request
+        table_name: Table name
+        delete_request: Item key
+
+    Returns:
+        DeleteItemResponse with success status
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 404 if table not found, 500 if delete fails
+    """
+    try:
+        if delete_request.tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        dynamodb_service = DynamoDBService(delete_request.tenant_id)
+        await dynamodb_service.delete_item(table_name, delete_request.key)
+
+        log_operational(
+            "Deleted item from DynamoDB table via API",
+            tenant_id=delete_request.tenant_id,
+            table_name=table_name,
+        )
+
+        return DeleteItemResponse(success=True)
+
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to delete item from DynamoDB table via API",
+            tenant_id=delete_request.tenant_id,
+            table_name=table_name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete item from DynamoDB table: {e!s}"
         )
