@@ -352,3 +352,22 @@ class DeleteFunctionResponse(BaseModel):
     """Response model for deleting a function."""
 
     deleted: str = Field(..., description="Name of deleted function")
+
+
+class InvokeFunctionRequest(BaseModel):
+    """Request model for invoking a function."""
+
+    payload: dict[str, Any] = Field(
+        default_factory=dict, description="Test payload (JSON object)"
+    )
+    tenant_id: str = Field(..., description="Tenant ID (for validation)")
+
+
+class InvokeFunctionResponse(BaseModel):
+    """Response model for function invocation."""
+
+    status_code: int = Field(..., description="HTTP status code")
+    response: str = Field(..., description="Function response body")
+    logs: str = Field(..., description="Execution logs")
+    function_error: str | None = Field(None, description="Error type if failed")
+    executed_version: str = Field(..., description="Executed function version")

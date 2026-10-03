@@ -639,3 +639,77 @@ class LambdaService:
             )
             # In a full implementation, we would create a DEPENDS_ON edge in FalkorDB here
             # For now, we just log it as the graph edge creation API isn't specified
+
+    async def invoke_function(
+        self, name: str, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """
+        Invoke a Lambda function with a test payload.
+
+        Args:
+            name: Function name
+            payload: Test payload (JSON object)
+
+        Returns:
+            Dict with invocation response: {status_code, response, execution_time, logs}
+
+        Raises:
+            ClientError: If invocation fails
+        """
+        with trace_operation(
+            "invoke_lambda_function", tenant_id=self.tenant_id, function=name
+        ):
+            try:
+                import json
+
+                # Invoke function
+                invoke_payload = json.dumps(payload or {}).encode("utf-8")
+
+                response = await asyncio.to_thread(
+                    self.client.invoke,
+                    FunctionName=name,
+                    InvocationType="RequestResponse",
+                    Payload=invoke_payload,
+                )
+
+                # Parse response
+                status_code = response.get("StatusCode", 0)
+                response_payload = response.get("Payload")
+
+                # Read response payload
+                if response_payload:
+                    response_body = response_payload.read().decode("utf-8")
+                else:
+                    response_body = ""
+
+                # Get logs from response headers (X-Amz-Log-Result is base64 encoded)
+                log_result = response.get("LogResult", "")
+                if log_result:
+                    import base64
+
+                    logs = base64.b64decode(log_result).decode("utf-8")
+                else:
+                    logs = ""
+
+                result = {
+                    "status_code": status_code,
+                    "response": response_body,
+                    "logs": logs,
+                    "function_error": response.get("FunctionError"),
+                    "executed_version": response.get("ExecutedVersion", "$LATEST"),
+                }
+
+                log_operational(
+                    "Invoked Lambda function",
+                    tenant_id=self.tenant_id,
+                    function=name,
+                    status_code=status_code,
+                )
+
+                return result
+
+            except ClientError as e:
+                error_code = e.response.get("Error", {}).get("Code", "Unknown")
+                if error_code == "ResourceNotFoundException":
+                    raise ValueError(f"Function {name} not found") from e
+                raise

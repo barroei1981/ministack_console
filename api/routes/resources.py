@@ -14,6 +14,8 @@ from api.models import (
     ErrorResponse,
     FunctionListResponse,
     FunctionResponse,
+    InvokeFunctionRequest,
+    InvokeFunctionResponse,
     UpdateFunctionCodeRequest,
     UpdateFunctionConfigurationRequest,
     UpdateVersioningRequest,
@@ -1097,4 +1099,73 @@ async def delete_lambda_function(
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to delete Lambda function: {e!s}"
+        )
+
+
+@router.post(
+    "/resources/lambda/functions/{function_name}/invoke",
+    response_model=InvokeFunctionResponse,
+    summary="Invoke Lambda function",
+    description="Invoke a Lambda function with a test payload",
+)
+async def invoke_lambda_function(
+    request: Request,
+    function_name: str,
+    invoke_request: InvokeFunctionRequest,
+) -> InvokeFunctionResponse:
+    """
+    Invoke a Lambda function with a test payload.
+
+    Args:
+        request: FastAPI request
+        function_name: Name of function to invoke
+        invoke_request: Test payload
+
+    Returns:
+        InvokeFunctionResponse with execution result and logs
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 404 if not found, 500 if invocation fails
+    """
+    try:
+        if invoke_request.tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        lambda_service = LambdaService(invoke_request.tenant_id)
+        result = await lambda_service.invoke_function(
+            function_name, invoke_request.payload
+        )
+
+        log_operational(
+            "Invoked Lambda function via API",
+            tenant_id=invoke_request.tenant_id,
+            function=function_name,
+            status=result["status_code"],
+        )
+
+        return InvokeFunctionResponse(
+            status_code=result["status_code"],
+            response=result["response"],
+            logs=result["logs"],
+            function_error=result.get("function_error"),
+            executed_version=result["executed_version"],
+        )
+
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to invoke Lambda function via API",
+            tenant_id=invoke_request.tenant_id,
+            function=function_name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to invoke Lambda function: {e!s}"
         )
