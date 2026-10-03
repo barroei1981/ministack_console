@@ -10,6 +10,8 @@ import { TableCreate } from './components/services/DynamoDB/TableCreate';
 import { TableDetail } from './components/services/DynamoDB/TableDetail';
 import { ResourceExplorer } from './components/ResourceExplorer';
 import { ResourceGraph } from './components/ResourceGraph';
+import { ProjectList } from './components/ProjectList';
+import { ProjectDetail } from './components/ProjectDetail';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -28,6 +30,8 @@ function App() {
           <Routes>
             <Route path="/explorer" element={<ResourceExplorer />} />
             <Route path="/graph" element={<ResourceGraph />} />
+            <Route path="/projects" element={<ProjectList />} />
+            <Route path="/projects/:projectName" element={<ProjectDetail />} />
             <Route path="/s3/buckets" element={<BucketList />} />
             <Route path="/s3/buckets/:name" element={<BucketDetail />} />
             <Route path="/lambda/functions" element={<FunctionList />} />

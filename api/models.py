@@ -72,6 +72,8 @@ class ProjectSummary(BaseModel):
     name: str = Field(..., description="Project name (from control-plane tags)")
     resource_count: int = Field(..., description="Total resources in project")
     tenant_id: str = Field(..., description="Owning tenant ID")
+    description: str | None = Field(None, description="Project description")
+    created_at: str | None = Field(None, description="Project creation timestamp")
 
 
 class ProjectListResponse(BaseModel):
@@ -79,6 +81,35 @@ class ProjectListResponse(BaseModel):
 
     projects: list[ProjectSummary] = Field(..., description="Project list")
     tenant_id: str = Field(..., description="Tenant ID context")
+
+
+class CreateProjectRequest(BaseModel):
+    """Create project request."""
+
+    name: str = Field(..., min_length=1, max_length=255, description="Project name")
+    description: str | None = Field(None, max_length=1000, description="Project description")
+    tenant_id: str = Field(..., min_length=12, max_length=12, description="Owning tenant ID")
+
+
+class ProjectDetailResponse(BaseModel):
+    """Project detail response with resource breakdown."""
+
+    name: str = Field(..., description="Project name")
+    description: str | None = Field(None, description="Project description")
+    tenant_id: str = Field(..., description="Owning tenant ID")
+    created_at: str | None = Field(None, description="Project creation timestamp")
+    resource_count: int = Field(..., description="Total resources in project")
+    resource_counts_by_service: dict[str, int] = Field(
+        ..., description="Resource counts grouped by service type"
+    )
+
+
+class BulkDeleteResponse(BaseModel):
+    """Bulk delete operation response."""
+
+    deleted_count: int = Field(..., description="Number of resources deleted")
+    project_name: str = Field(..., description="Project name")
+    tenant_id: str = Field(..., description="Tenant ID")
 
 
 class DependencyResponse(BaseModel):
