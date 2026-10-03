@@ -25,7 +25,10 @@ from mcp_server.resources import (
     search_resources,
 )
 from mcp_server.tools import (
+    bulk_confirm,
+    bulk_create_stack,
     bulk_delete_project_resources,
+    bulk_rollback,
     create_dynamodb_table,
     create_lambda_function,
     create_s3_bucket,
@@ -33,6 +36,7 @@ from mcp_server.tools import (
     delete_lambda_function,
     delete_s3_bucket,
 )
+from mcp_server.transactions import start_cleanup_task
 
 # Configure logging
 logging.basicConfig(
@@ -319,6 +323,44 @@ async def list_tools_handler() -> list[Tool]:
                 "required": ["project_name", "tenant_id"],
             },
         ),
+        Tool(
+            name="bulk_create_stack",
+            description="Create multiple resources atomically with rollback capability (returns transaction ID)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "stack_definition": {
+                        "type": "object",
+                        "description": "Stack definition with s3_buckets, lambda_functions, dynamodb_tables arrays",
+                    },
+                    "tenant_id": {"type": "string", "description": "Tenant ID (12 digits)"},
+                    "project": {"type": "string", "description": "Optional project tag for all resources"},
+                },
+                "required": ["stack_definition", "tenant_id"],
+            },
+        ),
+        Tool(
+            name="bulk_rollback",
+            description="Rollback a transaction by deleting all created resources",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "transaction_id": {"type": "string", "description": "Transaction ID from bulk_create_stack"},
+                },
+                "required": ["transaction_id"],
+            },
+        ),
+        Tool(
+            name="bulk_confirm",
+            description="Confirm a transaction (keep all created resources)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "transaction_id": {"type": "string", "description": "Transaction ID from bulk_create_stack"},
+                },
+                "required": ["transaction_id"],
+            },
+        ),
     ]
 
 
@@ -354,6 +396,12 @@ async def call_tool_handler(name: str, arguments: dict[str, Any]) -> list[TextCo
             result = await delete_dynamodb_table(**arguments)
         elif name == "bulk_delete_project_resources":
             result = await bulk_delete_project_resources(**arguments)
+        elif name == "bulk_create_stack":
+            result = await bulk_create_stack(**arguments)
+        elif name == "bulk_rollback":
+            result = await bulk_rollback(**arguments)
+        elif name == "bulk_confirm":
+            result = await bulk_confirm(**arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -375,6 +423,9 @@ async def main():
     logger.info(f"Starting MiniStack Console MCP Server (port {config.port})")
     logger.info(f"API base URL: {config.api_base_url}")
     logger.info(f"Dev mode: {config.dev_mode}")
+
+    # Start transaction cleanup task
+    start_cleanup_task()
 
     async with stdio_server() as (read_stream, write_stream):
         await app.run(
