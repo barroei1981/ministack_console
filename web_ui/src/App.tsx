@@ -5,6 +5,8 @@ import { Toast } from './components/common/Toast';
 import { BucketList } from './components/services/S3/BucketList';
 import { BucketDetail } from './components/services/S3/BucketDetail';
 import { FunctionList } from './components/services/Lambda/FunctionList';
+import { TableList } from './components/services/DynamoDB/TableList';
+import { TableCreate } from './components/services/DynamoDB/TableCreate';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +26,8 @@ function App() {
             <Route path="/s3/buckets" element={<BucketList />} />
             <Route path="/s3/buckets/:name" element={<BucketDetail />} />
             <Route path="/lambda/functions" element={<FunctionList />} />
+            <Route path="/dynamodb/tables" element={<TableList />} />
+            <Route path="/dynamodb/create" element={<TableCreate />} />
           </Routes>
         </BrowserRouter>
         <Toast />

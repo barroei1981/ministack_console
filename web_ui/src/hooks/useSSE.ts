@@ -58,6 +58,16 @@ export function useSSE(tenantId: string | null) {
             } else if (data.type === 'RESOURCE_DELETED') {
               queryClient.invalidateQueries({ queryKey: ['buckets', tenantId] });
             }
+          } else if (data.resource?.type === 'dynamodb:table') {
+            if (data.type === 'RESOURCE_CREATED') {
+              queryClient.invalidateQueries({ queryKey: ['dynamodb', 'tables', tenantId] });
+              toast.success(`New table: ${data.resource.name}`, { duration: 3000 });
+            } else if (data.type === 'RESOURCE_UPDATED') {
+              queryClient.invalidateQueries({ queryKey: ['dynamodb', 'tables', tenantId] });
+              queryClient.invalidateQueries({ queryKey: ['dynamodb', 'items', data.resource.name, tenantId] });
+            } else if (data.type === 'RESOURCE_DELETED') {
+              queryClient.invalidateQueries({ queryKey: ['dynamodb', 'tables', tenantId] });
+            }
           }
         } catch (error) {
           console.error('Failed to parse SSE event:', error);
