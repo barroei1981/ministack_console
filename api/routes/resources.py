@@ -8,10 +8,17 @@ from api.models import (
     BucketListResponse,
     BucketResponse,
     CreateBucketRequest,
+    CreateFunctionRequest,
     DeleteBucketResponse,
+    DeleteFunctionResponse,
     ErrorResponse,
+    FunctionListResponse,
+    FunctionResponse,
+    UpdateFunctionCodeRequest,
+    UpdateFunctionConfigurationRequest,
     UpdateVersioningRequest,
 )
+from api.services.lambda_ import LambdaService
 from api.services.s3 import S3Service
 from control_plane.observability import log_operational
 
@@ -642,4 +649,452 @@ async def delete_s3_objects(
         )
         raise HTTPException(
             status_code=500, detail=f"Failed to delete S3 objects: {e!s}"
+        )
+
+
+# ============================================================================
+# Lambda Function Endpoints
+# ============================================================================
+
+
+@router.get(
+    "/resources/lambda/functions",
+    response_model=FunctionListResponse,
+    summary="List Lambda functions",
+    description="List all Lambda functions for a tenant",
+)
+async def list_lambda_functions(
+    request: Request,
+    tenant_id: str = Query(..., description="Tenant ID (12 digits)"),
+) -> FunctionListResponse:
+    """
+    List all Lambda functions for a tenant.
+
+    Args:
+        request: FastAPI request
+        tenant_id: Tenant ID from query param
+
+    Returns:
+        FunctionListResponse with function list and metadata
+
+    Raises:
+        HTTPException: 403 if tenant_id mismatch, 500 if operation fails
+    """
+    try:
+        if tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        lambda_service = LambdaService(tenant_id)
+        function_nodes = await lambda_service.list_functions()
+
+        functions = []
+        for node in function_nodes:
+            functions.append(
+                FunctionResponse(
+                    name=node.get("name", ""),
+                    tenant_id=node.get("tenant_id", ""),
+                    project=node.get("project") or None,
+                    arn=node.get("arn", ""),
+                    created_at=node.get("created_at", ""),
+                    runtime=node.get("state", {}).get("runtime", ""),
+                    handler=node.get("state", {}).get("handler", ""),
+                    memory=node.get("state", {}).get("memory", 128),
+                    timeout=node.get("state", {}).get("timeout", 3),
+                    environment=node.get("state", {}).get("environment", {}),
+                    last_modified=node.get("state", {}).get("last_modified", ""),
+                    code_size=node.get("state", {}).get("code_size", 0),
+                    tags=node.get("tags", {}),
+                    state=node.get("state", {}),
+                )
+            )
+
+        log_operational(
+            "Listed Lambda functions via API",
+            tenant_id=tenant_id,
+            count=len(functions),
+        )
+
+        return FunctionListResponse(
+            functions=functions, tenant_id=tenant_id, total=len(functions)
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to list Lambda functions via API",
+            tenant_id=tenant_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list Lambda functions: {e!s}"
+        )
+
+
+@router.post(
+    "/resources/lambda/functions",
+    response_model=FunctionResponse,
+    status_code=201,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid function configuration"},
+        409: {"model": ErrorResponse, "description": "Function already exists"},
+    },
+    summary="Create Lambda function",
+    description="Create a new Lambda function",
+)
+async def create_lambda_function(
+    request: Request,
+    function_request: CreateFunctionRequest,
+) -> FunctionResponse:
+    """
+    Create a new Lambda function.
+
+    Args:
+        request: FastAPI request
+        function_request: Function creation parameters
+
+    Returns:
+        FunctionResponse with created function details
+
+    Raises:
+        HTTPException: 400 if invalid config, 403 if tenant mismatch,
+                      409 if function exists, 500 if operation fails
+    """
+    try:
+        if function_request.tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        lambda_service = LambdaService(function_request.tenant_id)
+
+        # Decode base64 code
+        import base64
+
+        try:
+            code_bytes = base64.b64decode(function_request.code)
+        except Exception as e:
+            raise ValueError(f"Invalid base64-encoded code: {e!s}") from e
+
+        resource = await lambda_service.create_function(
+            name=function_request.name,
+            runtime=function_request.runtime,
+            handler=function_request.handler,
+            code=code_bytes,
+            project=function_request.project,
+            environment=function_request.environment,
+            memory=function_request.memory,
+            timeout=function_request.timeout,
+            tags=function_request.tags,
+        )
+
+        log_operational(
+            "Created Lambda function via API",
+            tenant_id=function_request.tenant_id,
+            function=function_request.name,
+        )
+
+        return FunctionResponse(
+            name=resource["name"],
+            tenant_id=resource["tenant_id"],
+            project=resource.get("project") or None,
+            arn=resource["arn"],
+            created_at=resource["created_at"],
+            runtime=resource["state"].get("runtime", ""),
+            handler=resource["state"].get("handler", ""),
+            memory=resource["state"].get("memory", 128),
+            timeout=resource["state"].get("timeout", 3),
+            environment=resource["state"].get("environment", {}),
+            last_modified=resource["state"].get("last_modified", ""),
+            code_size=resource["state"].get("code_size", 0),
+            tags=resource.get("tags", {}),
+            state=resource.get("state", {}),
+        )
+
+    except ValueError as e:
+        if "already exists" in str(e).lower():
+            raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to create Lambda function via API",
+            tenant_id=function_request.tenant_id,
+            function=function_request.name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create Lambda function: {e!s}"
+        )
+
+
+@router.get(
+    "/resources/lambda/functions/{function_name}",
+    response_model=FunctionResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Function not found"},
+    },
+    summary="Get Lambda function",
+    description="Get details of a specific Lambda function",
+)
+async def get_lambda_function(
+    request: Request,
+    function_name: str,
+    tenant_id: str = Query(..., description="Tenant ID (12 digits)"),
+) -> FunctionResponse:
+    """
+    Get details of a specific Lambda function.
+
+    Args:
+        request: FastAPI request
+        function_name: Name of function to retrieve
+        tenant_id: Tenant ID from query param
+
+    Returns:
+        FunctionResponse with function details
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 404 if not found, 500 if operation fails
+    """
+    try:
+        if tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        lambda_service = LambdaService(tenant_id)
+        function = await lambda_service.get_function(function_name)
+
+        if not function:
+            raise HTTPException(
+                status_code=404, detail=f"Function {function_name} not found"
+            )
+
+        log_operational(
+            "Retrieved Lambda function via API",
+            tenant_id=tenant_id,
+            function=function_name,
+        )
+
+        return FunctionResponse(
+            name=function.get("name", ""),
+            tenant_id=function.get("tenant_id", ""),
+            project=function.get("project") or None,
+            arn=function.get("arn", ""),
+            created_at=function.get("created_at", ""),
+            runtime=function.get("state", {}).get("runtime", ""),
+            handler=function.get("state", {}).get("handler", ""),
+            memory=function.get("state", {}).get("memory", 128),
+            timeout=function.get("state", {}).get("timeout", 3),
+            environment=function.get("state", {}).get("environment", {}),
+            last_modified=function.get("state", {}).get("last_modified", ""),
+            code_size=function.get("state", {}).get("code_size", 0),
+            tags=function.get("tags", {}),
+            state=function.get("state", {}),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to get Lambda function via API",
+            tenant_id=tenant_id,
+            function=function_name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get Lambda function: {e!s}"
+        )
+
+
+@router.put(
+    "/resources/lambda/functions/{function_name}/code",
+    summary="Update Lambda function code",
+    description="Update function code with new ZIP file",
+)
+async def update_lambda_function_code(
+    request: Request,
+    function_name: str,
+    code_request: UpdateFunctionCodeRequest,
+):
+    """
+    Update Lambda function code.
+
+    Args:
+        request: FastAPI request
+        function_name: Name of function to update
+        code_request: New code (base64-encoded ZIP)
+
+    Returns:
+        Update result with last_modified and code_size
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 404 if not found, 500 if operation fails
+    """
+    try:
+        if code_request.tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        lambda_service = LambdaService(code_request.tenant_id)
+
+        # Decode base64 code
+        import base64
+
+        try:
+            code_bytes = base64.b64decode(code_request.code)
+        except Exception as e:
+            raise ValueError(f"Invalid base64-encoded code: {e!s}") from e
+
+        result = await lambda_service.update_function_code(function_name, code_bytes)
+
+        log_operational(
+            "Updated Lambda function code via API",
+            tenant_id=code_request.tenant_id,
+            function=function_name,
+        )
+
+        return result
+
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to update Lambda function code via API",
+            tenant_id=code_request.tenant_id,
+            function=function_name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update function code: {e!s}"
+        )
+
+
+@router.put(
+    "/resources/lambda/functions/{function_name}/configuration",
+    summary="Update Lambda function configuration",
+    description="Update function environment variables, memory, or timeout",
+)
+async def update_lambda_function_configuration(
+    request: Request,
+    function_name: str,
+    config_request: UpdateFunctionConfigurationRequest,
+):
+    """
+    Update Lambda function configuration.
+
+    Args:
+        request: FastAPI request
+        function_name: Name of function to update
+        config_request: New configuration (environment, memory, timeout)
+
+    Returns:
+        Update result with configuration
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 404 if not found, 500 if operation fails
+    """
+    try:
+        if config_request.tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        lambda_service = LambdaService(config_request.tenant_id)
+
+        result = await lambda_service.update_function_configuration(
+            function_name,
+            environment=config_request.environment,
+            memory=config_request.memory,
+            timeout=config_request.timeout,
+        )
+
+        log_operational(
+            "Updated Lambda function configuration via API",
+            tenant_id=config_request.tenant_id,
+            function=function_name,
+        )
+
+        return result
+
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to update Lambda function configuration via API",
+            tenant_id=config_request.tenant_id,
+            function=function_name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update function configuration: {e!s}"
+        )
+
+
+@router.delete(
+    "/resources/lambda/functions/{function_name}",
+    response_model=DeleteFunctionResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "Function not found"},
+    },
+    summary="Delete Lambda function",
+    description="Delete a Lambda function",
+)
+async def delete_lambda_function(
+    request: Request,
+    function_name: str,
+    tenant_id: str = Query(..., description="Tenant ID (12 digits)"),
+) -> DeleteFunctionResponse:
+    """
+    Delete a Lambda function.
+
+    Args:
+        request: FastAPI request
+        function_name: Name of function to delete
+        tenant_id: Tenant ID from query param
+
+    Returns:
+        DeleteFunctionResponse with deleted function name
+
+    Raises:
+        HTTPException: 403 if tenant mismatch, 404 if not found, 500 if operation fails
+    """
+    try:
+        if tenant_id != request.state.tenant_id:
+            raise HTTPException(status_code=403, detail="Forbidden")
+
+        lambda_service = LambdaService(tenant_id)
+        result = await lambda_service.delete_function(function_name)
+
+        log_operational(
+            "Deleted Lambda function via API",
+            tenant_id=tenant_id,
+            function=function_name,
+        )
+
+        return DeleteFunctionResponse(deleted=result["deleted"])
+
+    except ValueError as e:
+        error_msg = str(e).lower()
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=str(e))
+        else:
+            raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        log_operational(
+            "Failed to delete Lambda function via API",
+            tenant_id=tenant_id,
+            function=function_name,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete Lambda function: {e!s}"
         )

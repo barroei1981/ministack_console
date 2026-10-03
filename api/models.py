@@ -227,3 +227,128 @@ class DeleteBucketResponse(BaseModel):
     objects_deleted: int = Field(
         0, description="Number of objects deleted (if force=true)"
     )
+
+
+# Lambda Function naming validation
+LAMBDA_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9-_]+$")
+
+
+def validate_lambda_name(name: str) -> None:
+    """
+    Validate Lambda function name according to AWS rules.
+
+    Args:
+        name: Function name to validate
+
+    Raises:
+        ValueError: If function name violates Lambda naming rules
+    """
+    if not (1 <= len(name) <= 64):
+        raise ValueError("Function name must be 1-64 characters")
+
+    if not LAMBDA_NAME_PATTERN.match(name):
+        raise ValueError(
+            "Function name must contain only alphanumeric, hyphens, and underscores"
+        )
+
+
+class CreateFunctionRequest(BaseModel):
+    """Request model for creating a Lambda function."""
+
+    name: str = Field(..., description="Function name (1-64 chars)")
+    runtime: str = Field(
+        ..., description="Lambda runtime (e.g., python3.11, nodejs18.x)"
+    )
+    handler: str = Field(..., description="Function handler (e.g., index.handler)")
+    code: str = Field(..., description="Base64-encoded ZIP file containing function code")
+    tenant_id: str = Field(
+        ..., description="Tenant ID (12-digit MiniStack access key)"
+    )
+    project: str | None = Field(None, description="Control-plane project tag")
+    environment: dict[str, str] = Field(
+        default_factory=dict, description="Environment variables"
+    )
+    memory: int = Field(128, description="Memory size in MB (128-10240)", ge=128, le=10240)
+    timeout: int = Field(3, description="Timeout in seconds (1-900)", ge=1, le=900)
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Control-plane tags"
+    )
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        """Validate function name."""
+        validate_lambda_name(v)
+        return v
+
+    @field_validator("tenant_id")
+    @classmethod
+    def validate_tenant_id(cls, v: str) -> str:
+        """Validate tenant ID format."""
+        if not re.match(r"^\d{12}$", v):
+            raise ValueError("Tenant ID must be exactly 12 digits")
+        return v
+
+
+class FunctionResponse(BaseModel):
+    """Response model for Lambda function details."""
+
+    name: str = Field(..., description="Function name")
+    tenant_id: str = Field(..., description="Owning tenant ID")
+    project: str | None = Field(None, description="Control-plane project tag")
+    arn: str = Field(..., description="Function ARN")
+    created_at: str = Field(..., description="Creation timestamp (ISO 8601)")
+    runtime: str = Field(..., description="Lambda runtime")
+    handler: str = Field(..., description="Function handler")
+    memory: int = Field(..., description="Memory size in MB")
+    timeout: int = Field(..., description="Timeout in seconds")
+    environment: dict[str, str] = Field(
+        default_factory=dict, description="Environment variables"
+    )
+    last_modified: str = Field(..., description="Last modified timestamp")
+    code_size: int = Field(..., description="Code size in bytes")
+    tags: dict[str, str] = Field(
+        default_factory=dict, description="Control-plane tags"
+    )
+    state: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Function state (runtime, handler, memory, timeout, environment)",
+    )
+
+
+class FunctionListResponse(BaseModel):
+    """Response model for listing Lambda functions."""
+
+    functions: list[FunctionResponse] = Field(
+        ..., description="List of functions for tenant"
+    )
+    tenant_id: str = Field(..., description="Tenant ID context")
+    total: int = Field(..., description="Total function count")
+
+
+class UpdateFunctionCodeRequest(BaseModel):
+    """Request model for updating function code."""
+
+    code: str = Field(..., description="Base64-encoded ZIP file containing new function code")
+    tenant_id: str = Field(..., description="Tenant ID (for validation)")
+
+
+class UpdateFunctionConfigurationRequest(BaseModel):
+    """Request model for updating function configuration."""
+
+    environment: dict[str, str] | None = Field(
+        None, description="New environment variables"
+    )
+    memory: int | None = Field(
+        None, description="New memory size in MB (128-10240)", ge=128, le=10240
+    )
+    timeout: int | None = Field(
+        None, description="New timeout in seconds (1-900)", ge=1, le=900
+    )
+    tenant_id: str = Field(..., description="Tenant ID (for validation)")
+
+
+class DeleteFunctionResponse(BaseModel):
+    """Response model for deleting a function."""
+
+    deleted: str = Field(..., description="Name of deleted function")
